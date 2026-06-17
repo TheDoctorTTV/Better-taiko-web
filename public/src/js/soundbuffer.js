@@ -8,7 +8,10 @@
 		this.audioDecoder = this.context.decodeAudioData.bind(this.context)
 		this.oggDecoder = this.audioDecoder
 		this.pageClickHandler = this.pageClicked.bind(this)
-		pageEvents.add(window, ["click", "mousedown", "pointerdown", "touchstart", "touchend", "keydown", "keypress"], this.pageClickHandler, this)
+		this.resumeEvents = ["click", "mousedown", "pointerdown", "touchstart", "touchend", "keydown", "keypress"]
+		this.resumeEvents.forEach(type => {
+			window.addEventListener(type, this.pageClickHandler)
+		})
 		this.gainList = []
 	}
 	load(file, gain){
