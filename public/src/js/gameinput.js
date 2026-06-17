@@ -5,6 +5,7 @@ class GameInput{
 	init(controller){
 		this.controller = controller
 		this.game = this.controller.game
+		this.soundEffect = this.controller.soundEffect || 1
 		
 		this.keyboard = new Keyboard({
 			ka_l: ["ka_l"],
@@ -171,8 +172,6 @@ class GameInput{
 		}
 	}
 	checkKeySound(name, sound){
-		var vOneLS = localStorage.getItem("vOneLocalStorage")
-		var soundEffect = Number(vOneLS)
 		this.checkKey(name, "sound", () => {
 			var circles = this.controller.getCircles()
 			var circle = circles[this.controller.getCurrentCircle()]
@@ -192,7 +191,7 @@ class GameInput{
 					}
 				}
 			}
-			this.controller.playSound("neiro_"+ soundEffect + "_" + sound)
+			this.controller.playSound("neiro_"+ this.soundEffect + "_" + sound)
 		})
 	}
 	getKeys(){

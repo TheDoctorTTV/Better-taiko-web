@@ -13,6 +13,7 @@ class Controller{
 		}
 		this.multiplayer = multiplayer
 		this.touchEnabled = touchEnabled
+		this.soundEffect = this.getSoundEffect(selectedSong.soundEffect)
 		if(multiplayer === 2){
 			this.snd = p2.player === 2 ? "_p1" : "_p2"
 			this.don = p2.don || defaultDon
@@ -105,6 +106,7 @@ class Controller{
 		if(this.multiplayer !== 2){
 			snd.musicGain.setVolumeMul(this.volume)
 		}
+		this.warmupInputSounds()
 		this.game.run()
 		this.view.run()
 		if(this.multiplayer === 1){
@@ -313,6 +315,32 @@ class Controller{
 			}, 500)
 			return Promise.reject(error)
 		}))
+	}
+	getSoundEffect(value){
+		var soundEffect = parseInt(value, 10)
+		if(!soundEffect){
+			try{
+				soundEffect = parseInt(localStorage.getItem("vOneLocalStorage"), 10)
+			}catch(e){}
+		}
+		if(!soundEffect || soundEffect < 1){
+			return 1
+		}
+		return Math.min(30, soundEffect)
+	}
+	warmupInputSounds(){
+		if(this.inputSoundsWarmed || !this.drumSounds){
+			return
+		}
+		this.inputSoundsWarmed = true
+		var prefix = "neiro_" + this.soundEffect + "_"
+		;["don", "ka"].forEach(type => {
+			var id = prefix + type
+			var sound = assets.sounds[id + this.snd] || assets.sounds[id]
+			if(sound && sound.warmup){
+				sound.warmup()
+			}
+		})
 	}
 	playSound(id, time, noSnd){
 		if(!this.drumSounds && (id === "neiro_1_don" || id === "neiro_1_ka" || id === "neiro_2_don" || id === "neiro_2_ka" || id === "neiro_3_don" || id === "neiro_3_ka" || id === "neiro_4_don" || id === "neiro_4_ka" || id === "neiro_5_don" || id === "neiro_5_ka" || id === "neiro_6_don" || id === "neiro_6_ka" || id === "neiro_7_don" || id === "neiro_7_ka" || id === "neiro_8_don" || id === "neiro_8_ka" || id === "neiro_9_don" || id === "neiro_9_ka" || id === "neiro_10_don" || id === "neiro_10_ka" || id === "neiro_11_don" || id === "neiro_11_ka" || id === "neiro_12_don" || id === "neiro_12_ka" || id === "neiro_13_don" || id === "neiro_13_ka" || id === "neiro_14_don" || id === "neiro_14_ka" || id === "neiro_15_don" || id === "neiro_15_ka" || id === "neiro_16_don" || id === "neiro_16_ka" || id === "neiro_17_don" || id === "neiro_17_ka" || id === "neiro_18_don" || id === "neiro_18_ka" || id === "neiro_19_don" || id === "neiro_19_ka" || id === "neiro_20_don" || id === "neiro_20_ka" || id === "neiro_21_don" || id === "neiro_21_ka" || id === "neiro_22_don" || id === "neiro_22_ka" || id === "neiro_23_don" || id === "neiro_23_ka" || id === "neiro_24_don" || id === "neiro_24_ka" || id === "neiro_25_don" || id === "neiro_25_ka" || id === "neiro_26_don" || id === "neiro_26_ka" || id === "neiro_27_don" || id === "neiro_27_ka" || id === "neiro_28_don" || id === "neiro_28_ka" || id === "neiro_29_don" || id === "neiro_29_ka" || id === "neiro_30_don" || id === "neiro_30_ka" || id === "se_don" || id === "se_ka")){

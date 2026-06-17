@@ -1758,6 +1758,7 @@ class SongSelect{
 			"songSkin": selectedSong.songSkin,
 			"stars": selectedSong.courses[diff].stars,
 			"hash": selectedSong.hash,
+			"soundEffect": soundEffec,
 			"mods": mods,
 			"lyrics": selectedSong.lyrics
 		}, autoplay, multiplayer, touch)
