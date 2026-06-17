@@ -428,6 +428,13 @@ var translations = {
 		tw: "使用此選項時不會儲存成績",
 		ko: "이 옵션을 사용하면 점수가 저장되지 않습니다"
 	},
+	autoUnavailable2PWarning: {
+		ja: "2Pモードではオートは使用できません",
+		en: "Auto does not work in 2P mode",
+		cn: "2P模式下无法使用自动演奏",
+		tw: "2P模式下無法使用自動演奏",
+		ko: "2P 모드에서는 자동 연주를 사용할 수 없습니다"
+	},
 	loadSongError: {
 		ja: "曲「%s」を読み込むことができませんでした。（ID：%s）\n\n%s",
 		en: "Could not load song %s with ID %s.\n\n%s"

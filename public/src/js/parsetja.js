@@ -2,7 +2,7 @@
 	constructor(...args){
 		this.init(...args)
 	}
-	init(file, difficulty, stars, offset, metaOnly, mods){
+	init(file, difficulty, stars, offset, metaOnly, mods, options){
 		this.data = []
 		for(let line of file){
 			var indexComment = line.indexOf("//")
@@ -17,19 +17,23 @@
 		}
 		this.difficulty = difficulty
 		this.stars = stars
+		options = options || {}
+		this.chartPlayer = options.player === 2 ? 2 : 1
+		this.usePlayerSections = !!options.usePlayerSections
 		var externalOffset = parseFloat(offset)
 		this.externalOffset = isNaN(externalOffset) ? 0 : externalOffset
 		this.offset = 0
-		this.mods = mods || {
-			speed: 1,
-			inverse: false,
-			shuffle: 0,
-			doron: false,
-			hardcore: false,
-			allDon: false,
-			allKat: false
-		};
-		this.soundOffset = 0
+			this.mods = mods || {
+				speed: 1,
+				inverse: false,
+				shuffle: 0,
+				doron: false,
+				hardcore: false,
+				allDon: false,
+				allKat: false
+			};
+			this.random = this.getRandom()
+			this.soundOffset = 0
 		this.noteTypes = {
 			"0": {name: false, txt: false},
 			"1": {name: "don", txt: strings.note.don},
@@ -55,7 +59,7 @@
 			"4": "ura",
 			"edit": "ura"
 		}
-		
+
 		this.metadata = this.parseMetadata()
 		this.measures = []
 		this.beatInfo = {}
@@ -64,7 +68,7 @@
 			this.circles = this.parseCircles()
 		}
 	}
-	invertNote(note){
+		invertNote(note){
 		switch(note.type){
 			case "don":
 				note.type = "ka"
@@ -83,78 +87,154 @@
 				note.txt = strings.note.daiDon
 				break
 		}
-	}
-	parseMetadata(){
+		}
+		getRandom(){
+			var seed = this.mods && parseInt(this.mods.shuffleSeed, 10)
+			if(!seed){
+				return Math.random
+			}
+			seed >>>= 0
+			return () => {
+				seed += 0x6D2B79F5
+				var value = seed
+				value = Math.imul(value ^ value >>> 15, value | 1)
+				value ^= value + Math.imul(value ^ value >>> 7, value | 61)
+				return ((value ^ value >>> 14) >>> 0) / 4294967296
+			}
+		}
+		parseMetadata(){
 		var metaNumbers = ["bpm", "offset", "demostart", "level", "scoremode", "scorediff"]
 		var inSong = false
-		var hasSong = false
 		var courses = {}
 		var currentCourse = {}
 		var courseName = "oni"
-		for(var lineNum = 0; lineNum < this.data.length; lineNum++){
-			var line = this.data[lineNum]
-			
-			if(line.slice(0, 1) === "#"){
-				
-				var name = line.slice(1).toLowerCase()
-				if((name === "start" || name === "start p1") && !inSong){
-					
-					inSong = true
-					if(!hasSong){
-						if(!(courseName in courses)){
-							courses[courseName] = {}
-						}
-						for(var name in currentCourse){
-							if(name !== "branch"){
-								courses[courseName][name] = currentCourse[name]
-							}
-						}
-						courses[courseName].start = lineNum + 1
-						courses[courseName].end = this.data.length
-					}
-				}else if(name === "end" && inSong){
-					inSong = false
-					if(!hasSong){
-						hasSong = true
-						courses[courseName].end = lineNum
-					}
-				}else if(name.startsWith("branchstart") && inSong){
-					courses[courseName].branch = true
-				}else if(name.startsWith("lyric") && inSong){
-					courses[courseName].inlineLyrics = true
+		var currentSection = null
+		var ensureCourse = () => {
+			if(!(courseName in courses)){
+				courses[courseName] = {}
+			}
+			var course = courses[courseName]
+			for(var name in currentCourse){
+				if(name !== "branch"){
+					course[name] = currentCourse[name]
 				}
-				
-			}else if(!inSong){
-				
-				if(line.indexOf(":") > 0){
-					
-					var [name, value] = this.split(line, ":")
-					name = name.toLowerCase().trim()
-					value = value.trim()
-					
-					if(name === "course"){
-						value = value.toLowerCase()
-						if(value in this.courseTypes){
-							courseName = this.courseTypes[value]
-						}else{
-							courseName = value
-						}
-						hasSong = false
-					}else if(name === "balloon"){
-						value = value ? value.split(",").map(digit => parseInt(digit)) : []
-					}else if(this.inArray(name, metaNumbers)){
-						value = parseFloat(value)
-					}
-					else if (name === "scoreinit") {
-						value = value ? parseFloat(value.split(",")[0]) : 0; 
-					}
-
-					currentCourse[name] = value
+			}
+			if(!course.players){
+				course.players = {}
+			}
+			return course
+		}
+		var setDefaultSection = (course, section, player) => {
+			if(!player){
+				course.single = section
+				course.start = section.start
+				course.end = section.end
+			}else{
+				course.players[player] = section
+				if(player === 1 && !course.single){
+					course.start = section.start
+					course.end = section.end
 				}
-				
 			}
 		}
+		var getPlayerValue = value => {
+			value = value.trim().toLowerCase()
+			return value === "p2" || value === "2" ? 2 : (value === "p1" || value === "1" ? 1 : null)
+		}
+		for(var lineNum = 0; lineNum < this.data.length; lineNum++){
+			var line = this.data[lineNum]
+
+			if(line.slice(0, 1) === "#"){
+
+				var [command, value] = this.split(line.slice(1), " ")
+				command = command.toLowerCase()
+				value = value.trim()
+				if(command === "start" && !inSong){
+
+					inSong = true
+					var course = ensureCourse()
+					var player = getPlayerValue(value)
+					currentSection = {
+						start: lineNum + 1,
+						end: this.data.length
+					}
+					setDefaultSection(course, currentSection, player)
+				}else if(command === "end" && inSong){
+					inSong = false
+					if(currentSection){
+						currentSection.end = lineNum
+						var course = courses[courseName]
+						if(course && (course.single === currentSection || course.players && course.players[1] === currentSection && !course.single)){
+							course.end = lineNum
+						}
+						currentSection = null
+					}
+				}else if(command.startsWith("branchstart") && inSong){
+					courses[courseName].branch = true
+				}else if(command.startsWith("lyric") && inSong){
+					courses[courseName].inlineLyrics = true
+				}
+
+				}else if(!inSong){
+
+					if(line.indexOf(":") > 0){
+
+						var [name, value] = this.split(line, ":")
+						name = name.toLowerCase().trim()
+						value = value.trim()
+
+						if(name === "course"){
+							value = value.toLowerCase()
+							delete currentCourse.style
+							if(value in this.courseTypes){
+								courseName = this.courseTypes[value]
+							}else{
+								courseName = value
+							}
+						}else if(name === "balloon"){
+							value = value ? value.split(",").map(digit => parseInt(digit)) : []
+						}else if(this.inArray(name, metaNumbers)){
+							value = parseFloat(value)
+						}
+						else if (name === "scoreinit") {
+							value = value ? parseFloat(value.split(",")[0]) : 0;
+						}
+
+						currentCourse[name] = value
+					}
+
+				}
+			}
 		return courses
+	}
+	isDoubleStyle(style){
+		style = (style || "").toString().trim().toLowerCase()
+		return style === "double" || style === "couple" || style === "2"
+	}
+	getPlayerMeta(meta){
+		if(!meta){
+			return {}
+		}
+		var section = null
+		if(this.usePlayerSections && this.isDoubleStyle(meta.style) && meta.players && meta.players[this.chartPlayer]){
+			section = meta.players[this.chartPlayer]
+		}else if(meta.single){
+			section = meta.single
+		}else if(meta.players && meta.players[1]){
+			section = meta.players[1]
+		}else if(meta.start !== undefined && meta.end !== undefined){
+			section = meta
+		}
+		if(!section){
+			return meta
+		}
+		var playerMeta = {}
+		for(var name in meta){
+			playerMeta[name] = meta[name]
+		}
+		playerMeta.start = section.start
+		playerMeta.end = section.end
+		return playerMeta
 	}
 	inArray(string, array){
 		return array.indexOf(string) >= 0
@@ -167,7 +247,7 @@
 		return [string.slice(0, index), string.slice(index + delimiter.length)]
 	}
 	parseCircles(){
-		var meta = this.metadata[this.difficulty] || {}
+			var meta = this.getPlayerMeta(this.metadata[this.difficulty])
 		var chartOffset = typeof meta.offset === "number" && !isNaN(meta.offset) ? meta.offset : 0
 		this.offset = (chartOffset + this.externalOffset) * -1000
 		var ms = this.offset
@@ -177,12 +257,12 @@
 		this.beatInfo.beatInterval = 60000 / bpm
 		var gogo = false
 		var barLine = true
-		
+
 		var balloonID = 0
 		var balloons = meta.balloon || []
-		
+
 		var lastDrumroll = false
-		
+
 		var branch = false
 		var branchObj = {}
 		var currentBranch = false
@@ -192,7 +272,7 @@
 		var lastBpm = bpm
 		var lastGogo = gogo
 		var lyricsLine = null
-		
+
 		var currentMeasure = []
 		var firstNote = true
 		var circles = []
@@ -200,10 +280,10 @@
 		var regexAZ = /[A-Z]/
 		var regexSpace = /\s/
 		var regexLinebreak = /\\n/g
-		var isAllDon = (note_chain, start_pos) => { 
-			for (var i = start_pos; i < note_chain.length; ++i) { 
+		var isAllDon = (note_chain, start_pos) => {
+			for (var i = start_pos; i < note_chain.length; ++i) {
 				var note = note_chain[i];
-				if (note && note.type !== "don" && note.type !== "daiDon") { 
+				if (note && note.type !== "don" && note.type !== "daiDon") {
 					return false;
 				}
 			}
@@ -219,7 +299,7 @@
 				var alldon_pos = null;
 				for (var i = 0; i < note_chain.length - (is_last ? 1 : 0); ++i) {
 					var note = note_chain[i];
-					if (alldon_pos === null && is_last && isAllDon(note_chain, i)) { 
+					if (alldon_pos === null && is_last && isAllDon(note_chain, i)) {
 						alldon_pos = i;
 					}
 					note.text = this.noteTypes_ex[note.type][alldon_pos != null ? (i - alldon_pos) % 2 : 0];
@@ -269,11 +349,11 @@
 						if(this.mods.inverse){
 							this.invertNote(note)
 						}
-						if(Math.random() < this.mods.shuffle){
+						if(this.random() < this.mods.shuffle){
 							this.invertNote(note)
 						}
 						if (this.mods.allDon) {
-							switch (note.type) { 
+							switch (note.type) {
 								case "don":
 									break;
 								case "ka":
@@ -291,7 +371,7 @@
 							}
 						}
 						if (this.mods.allKat) {
-							switch (note.type) { 
+							switch (note.type) {
 								case "don":
 									note.type = "ka";
 									note.txt = strings.note.ka;
@@ -323,16 +403,16 @@
 						})
 						if (note.type === "don" || note.type === "ka" || note.type === "daiDon" || note.type === "daiKa") {
 							note_chain.push(circleObj);
-						} else { 
-							if (note_chain.length > 1 && currentMeasure.length >= 8) { 
+						} else {
+							if (note_chain.length > 1 && currentMeasure.length >= 8) {
 								checkChain(note_chain, currentMeasure.length, false);
 							}
 							note_chain = [];
-						} 
+						}
 						if (lastDrumroll === note) {
 							lastDrumroll = circleObj
 						}
-						
+
 						if(note.event){
 							this.events.push(circleObj)
 						}
@@ -340,8 +420,8 @@
 							circles.push(circleObj)
 						}
 					} else if (!(currentMeasure.length >= 24 && (!currentMeasure[i + 1] || currentMeasure[i + 1].type))
-						&& !(currentMeasure.length >= 48 && (!currentMeasure[i + 2] || currentMeasure[i + 2].type || !currentMeasure[i + 3] || currentMeasure[i + 3].type))) { 
-						if (note_chain.length > 1 && currentMeasure.length >= 8) { 
+						&& !(currentMeasure.length >= 48 && (!currentMeasure[i + 2] || currentMeasure[i + 2].type || !currentMeasure[i + 3] || currentMeasure[i + 3].type))) {
+						if (note_chain.length > 1 && currentMeasure.length >= 8) {
 							checkChain(note_chain, currentMeasure.length, true);
 						}
 						note_chain = [];
@@ -359,7 +439,7 @@
 						})
 					}
 				}
-				if (note_chain.length > 1 && currentMeasure.length >= 8) { 
+				if (note_chain.length > 1 && currentMeasure.length >= 8) {
 					checkChain(note_chain, currentMeasure.length, false);
 				}
 			}else{
@@ -408,15 +488,15 @@
 				currentMeasure.push(circleObj)
 			}
 		}
-		
+
 		for(var lineNum = meta.start; lineNum < meta.end; lineNum++){
 			var line = this.data[lineNum]
 			if(line.slice(0, 1) === "#"){
-				
+
 				var line = line.slice(1)
 				var [name, value] = this.split(line, " ")
 				name = name.toLowerCase()
-				
+
 				switch(name){
 					case "gogostart":
 						gogo = true
@@ -525,16 +605,16 @@
 						lyricsLine = value.replace(regexLinebreak, "\n").trim()
 						break
 				}
-				
+
 			}else{
-				
+
 				var string = line.toUpperCase().split("")
-				
+
 				for(let symbol of string){
-					
+
 					var error = false
 					switch(symbol){
-						
+
 						case "0":
 							insertBlankNote()
 							break
@@ -623,13 +703,13 @@
 								error = true
 							}
 							break
-						
+
 					}
 					if(error){
 						break
 					}
 				}
-				
+
 			}
 		}
 		pushMeasure()
@@ -637,7 +717,7 @@
 			lastDrumroll.endTime = ms
 			lastDrumroll.originalEndTime = ms
 		}
-		
+
 		if(this.branches){
 			circles.sort((a, b) => a.ms > b.ms ? 1 : -1)
 			this.measures.sort((a, b) => a.ms > b.ms ? 1 : -1)
@@ -647,7 +727,7 @@
 		this.scorediff = meta.scorediff;
 		if (this.scoreinit) {
 			this.scoremode = meta.scoremode || 1;
-		} else { 
+		} else {
 			this.scoremode = meta.scoremode || 2;
 			var autoscore = new AutoScore(this.difficulty, this.stars, this.scoremode, circles);
 			this.scoreinit = autoscore.ScoreInit;

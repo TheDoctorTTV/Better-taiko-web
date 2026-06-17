@@ -25,6 +25,9 @@ class Game{
 			title: selectedSong.title,
 			difficulty: this.rules.difficulty
 		}
+		this.globalScore.adlibTotal = this.songData.circles.filter(circle => {
+			return circle.type === "adlib" && (!circle.branch || circle.branch.active)
+		}).length
 		var combo = this.songData.circles.filter(circle => {
 			var type = circle.type
 			return (type === "don" || type === "ka" || type === "daiDon" || type === "daiKa" || type === "green") && (!circle.branch || circle.branch.active)
@@ -248,6 +251,15 @@ class Game{
 			this.updateCombo(0)
 			this.updateGlobalScore(0, 1)
 		}
+		if(circle.type === "green"){
+			var keys = this.controller.getKeys()
+			var drumKeys = ["don_l", "don_r", "ka_l", "ka_r"]
+			drumKeys.forEach(key => {
+				if(keys[key]){
+					this.controller.waitForKeyup(key, "score")
+				}
+			})
+		}
 		if(this.controller.multiplayer === 1){
 			p2.send("note", {
 				score: -1
@@ -318,15 +330,22 @@ class Game{
 		var keysKa = check === "ka" || check === "daiKa"
 		var keyDai = check === "daiDon" || check === "daiKa"
 		var keyGreen = check === "green"
+		var keyTime = this.controller.getKeyTime()
+		var keyTimeRelative = Math.abs(keyTime.don - keyTime.ka)
+		var greenDonRelative = keyTime["don"] - circle.ms - this.controller.audioLatency
+		var greenKaRelative = keyTime["ka"] - circle.ms - this.controller.audioLatency
+		var greenInput = keyGreen && keyTimeRelative <= 50 && Math.abs(greenDonRelative) < this.rules.bad && Math.abs(greenKaRelative) < this.rules.bad
 		var typeDon = type === "don" || type === "daiDon" || type === "adlib"
 		var typeKa = type === "ka" || type === "daiKa" || type === "adlib"
 		var typeDai = type === "daiDon" || type === "daiKa" || type === "green"
 		var typeAdlib = type === "adlib"
 		var typeGreen = type === "green"
-		
-		var keyTime = this.controller.getKeyTime()
-		var currentTime = circle.daiFailed ? circle.daiFailed.ms : keysDon ? keyTime["don"] : keyTime["ka"]
+
+		var currentTime = circle.daiFailed ? circle.daiFailed.ms : keyGreen ? Math.max(keyTime["don"], keyTime["ka"]) : keysDon ? keyTime["don"] : keyTime["ka"]
 		var relative = currentTime - circle.ms - this.controller.audioLatency
+		if(typeGreen && greenInput){
+			relative = Math.max(Math.abs(greenDonRelative), Math.abs(greenKaRelative))
+		}
 		
 		if(relative >= this.rules.ok){
 			var fixedNote = this.fixNoteStream(keysDon)
@@ -340,7 +359,7 @@ class Game{
 				return true
 			}
 			var score = 0
-			if(keysDon && typeDon || keysKa && typeKa || typeGreen){
+			if(keysDon && typeDon || keysKa && typeKa || typeGreen && greenInput){
 				var circleStatus = -1
 				relative = Math.abs(relative)
 				if(relative < this.rules.good){
@@ -350,7 +369,7 @@ class Game{
 				}else if(relative < this.rules.bad){
 					circleStatus = 0
 				}
-				if(typeGreen ? !keyGreen : (typeDai && !keyDai)){
+				if(typeGreen ? !greenInput : (typeDai && !keyDai)){
 					if(this.controller.easierBigNotes && !typeGreen){
 						// Taiko Force Lv5 can't hit both Dons at the same time, so dai offered
 						keyDai = true
@@ -376,9 +395,9 @@ class Game{
 				if(!typeAdlib || score){
 					this.controller.displayScore(score, false, typeDai && keyDai || typeGreen, typeAdlib)
 				}
+			}else if(typeGreen){
+				return false
 			}else{
-				var keyTime = this.controller.getKeyTime()
-				var keyTimeRelative = Math.abs(keyTime.don - keyTime.ka)
 				if(Math.abs(relative) >= (keyTimeRelative <= 25 ? this.rules.bad : this.rules.good)){
 					return true
 				}

@@ -16,7 +16,7 @@ class LoadSong{
 		}else if(resolution === "lowest"){
 			this.imgScale = 0.25
 		}
-		
+
 		loader.changePage("loadsong", true)
 		var loadingText = document.getElementById("loading-text")
 		loadingText.appendChild(document.createTextNode(strings.loading))
@@ -59,11 +59,11 @@ class LoadSong{
 			}
 		}
 		this.songObj = songObj
-		
+
 		song.songBg = this.randInt(1, 5)
 		song.songStage = this.randInt(1, 3)
 		song.donBg = this.randInt(1, 6)
-		
+
 		if(song.songSkin && song.songSkin.name){
 			var imgLoad = []
 			for(var type in song.songSkin){
@@ -120,7 +120,7 @@ class LoadSong{
 			}
 		}
 		this.loadSongBg(id)
-		
+
 		if(songObj.sound && songObj.sound.buffer){
 			songObj.sound.gain = snd.musicGain
 		}else if(songObj.music !== "muted"){
@@ -267,32 +267,70 @@ class LoadSong{
 	randInt(min, max){
 		return Math.floor(Math.random() * (max - min + 1)) + min
 	}
+	cloneSong(song){
+		var clone = {}
+		for(var name in song){
+			clone[name] = song[name]
+		}
+		if(clone.mods){
+			clone.mods = this.cloneModifiers(clone.mods)
+		}
+		return clone
+	}
+	cloneModifiers(mods){
+		var clone = {
+			speed: mods && mods.speed || 1,
+			inverse: !!(mods && mods.inverse),
+			shuffle: mods && mods.shuffle || 0,
+			doron: !!(mods && mods.doron),
+			hardcore: !!(mods && mods.hardcore),
+			allDon: !!(mods && mods.allDon),
+			allKat: !!(mods && mods.allKat)
+		}
+		if(mods && "shuffleSeed" in mods){
+			clone.shuffleSeed = parseInt(mods.shuffleSeed, 10) || 0
+		}
+		return clone
+	}
+	applyRemoteSettings(song, value){
+		value = value || {}
+		if(value.mods && typeof value.mods === "object"){
+			song.mods = this.cloneModifiers(value.mods)
+		}
+		if("soundEffect" in value){
+			var soundEffect = parseInt(value.soundEffect, 10)
+			if(soundEffect > 0){
+				song.soundEffect = soundEffect
+			}
+		}
+		return song
+	}
 	setupMultiplayer(){
 		var song = this.selectedSong
-		
+
 		if(this.multiplayer){
 			var loadingText = document.getElementsByClassName("loading-text")[0]
 			loadingText.firstChild.data = strings.waitingForP2
 			loadingText.setAttribute("alt", strings.waitingForP2)
-			
+
 			this.cancelButton = document.getElementById("p2-cancel-button")
 			this.cancelButton.style.display = "inline-block"
 			pageEvents.add(this.cancelButton, ["mousedown", "touchstart"], this.cancelLoad.bind(this))
-			
+
 			this.song2Data = this.songData
 			this.selectedSong2 = song
 			pageEvents.add(p2, "message", event => {
 				if(event.type === "gameload"){
+					var value = event.value || {}
+					var remoteSong = this.applyRemoteSettings(this.cloneSong(song), value)
 					this.cancelButton.style.display = ""
-					
-					if(event.value.diff === song.difficulty){
+
+					if(value.diff === song.difficulty){
+						this.selectedSong2 = remoteSong
 						this.startMultiplayer()
 					}else{
-						this.selectedSong2 = {}
-						for(var i in this.selectedSong){
-							this.selectedSong2[i] = this.selectedSong[i]
-						}
-						this.selectedSong2.difficulty = event.value.diff
+						this.selectedSong2 = remoteSong
+						this.selectedSong2.difficulty = value.diff
 						var chart = this.songObj.chart
 						var chartDiff = this.selectedSong2.difficulty
 						if(song.type === "tja" || !chart || !chart.separateDiff || !chart[chartDiff]){
@@ -308,10 +346,19 @@ class LoadSong{
 				}else if(event.type === "gamestart"){
 					this.clean()
 					p2.clearMessage("songsel")
-					var taikoGame1 = new Controller(song, this.songData, false, 1, this.touchEnabled)
-					var taikoGame2 = new Controller(this.selectedSong2, this.song2Data, true, 2, this.touchEnabled)
+					var selectedSong1 = this.cloneSong(song)
+					var selectedSong2 = this.cloneSong(this.selectedSong2)
+					var useTjaPlayerSections = selectedSong1.type === "tja" && selectedSong2.difficulty === selectedSong1.difficulty
+					selectedSong1.tjaUsePlayerSections = useTjaPlayerSections
+					selectedSong2.tjaUsePlayerSections = useTjaPlayerSections
+					if(useTjaPlayerSections){
+						selectedSong1.tjaChartPlayer = p2.player === 2 ? 2 : 1
+						selectedSong2.tjaChartPlayer = p2.player === 2 ? 1 : 2
+					}
+					var taikoGame1 = new Controller(selectedSong1, this.songData, false, 1, this.touchEnabled)
+					var taikoGame2 = new Controller(selectedSong2, this.song2Data, true, 2, this.touchEnabled)
 					taikoGame1.run(taikoGame2)
-					pageEvents.send("load-song-player2", this.selectedSong2)
+					pageEvents.send("load-song-player2", selectedSong2)
 				}else if(event.type === "left" || event.type === "gameend"){
 					this.clean()
 					new SongSelect(false, false, this.touchEnabled)
@@ -321,7 +368,9 @@ class LoadSong{
 				id: song.folder,
 				diff: song.difficulty,
 				name: account.loggedIn ? account.displayName : null,
-				don: account.loggedIn ? account.don : null
+				don: account.loggedIn ? account.don : null,
+				mods: this.cloneModifiers(song.mods),
+				soundEffect: song.soundEffect
 			})
 		}else{
 			this.clean()

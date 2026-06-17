@@ -100,16 +100,23 @@ class Scoresheet{
 			touchEvents: controller.view.touchEvents
 		})
 	}
-	getBadgeNames(){
-		var badges = this.controller.getModBadges ? this.controller.getModBadges() : []
+	getControllerForPlayer(player){
+		if(this.multiplayer && player !== this.player[0]){
+			return this.controller.syncWith || this.controller
+		}
+		return this.controller
+	}
+	getBadgeNames(player){
+		var controller = this.getControllerForPlayer(player)
+		var badges = controller.getModBadges ? controller.getModBadges() : []
 		badges = badges.slice()
-		if(this.controller.autoPlayEnabled){
+		if(controller.autoPlayEnabled && !this.multiplayer){
 			badges.unshift("badge_auto")
 		}
 		return badges.filter(name => assets.image[name])
 	}
-	drawModBadges(ctx, x, y, size){
-		var badges = this.getBadgeNames()
+	drawModBadges(ctx, x, y, size, player){
+		var badges = this.getBadgeNames(player)
 		var gap = Math.max(2, Math.round(size * 0.12))
 		badges.forEach((name, i) => {
 			ctx.drawImage(assets.image[name], x + i * (size + gap), y, size, size)
@@ -363,20 +370,17 @@ class Scoresheet{
 		}else{
 			var elapsed = 0
 		}
-		
+
 		var rules = this.controller.game.rules
-		
+
 		var showAdlib = false
 		for(var p = 0; p < players; p++){
-			var results = this.results
-			if(p === 1){
-				results = p2.results
-			}
-			if(results.adlibTotal > 0){
+			var results = this.results[p]
+			if(results && Number(results.adlib) > 0){
 				showAdlib = true
 			}
 		}
-		
+
 		var failedOffset = rules.clearReached(this.results[this.player[0]].gauge) ? 0 : -2000
 		if(players === 2 && failedOffset !== 0){
 			var p2results = this.results[this.player[1]]
@@ -520,7 +524,7 @@ class Scoresheet{
 						})
 					})
 					
-					this.drawModBadges(ctx, 431, 311, 34)
+					this.drawModBadges(ctx, 431, 311, 34, p)
 					
 					this.draw.roundedRect({
 						ctx: ctx,
@@ -638,18 +642,6 @@ class Scoresheet{
 							y: 273,
 							results: true
 						})
-						this.draw.layeredText({
-							ctx: ctx,
-							text: "%",
-							x: 971 + 270,
-							y: 196 + 80,
-							fontSize: 26,
-							fontFamily: this.numbersFont,
-							align: "right"
-						}, [
-							{outline: "#000", letterBorder: 9},
-							{fill: "#fff"}
-						])
 					}
 				}
 				ctx.restore()
@@ -808,11 +800,7 @@ class Scoresheet{
 							continue
 						}
 						times[printNumbers[i]] = lastTime + 500
-						if(printNumbers[i] === "adlib"){
-							var resultsNumber = (results.adlibTotal > 0 ? Math.floor(results.adlib / results.adlibTotal * 100) : 0).toString()
-						}else{
-							var resultsNumber = results[printNumbers[i]]
-						}
+						var resultsNumber = this.getResultValue(results, printNumbers[i])
 						var currentTime = lastTime + 500 + resultsNumber.length * 30 * this.frame
 						if(currentTime > largestTime){
 							largestTime = currentTime
@@ -859,27 +847,22 @@ class Scoresheet{
 					var lastTime = 3100 + noCrownResultWait + results.points.length * 30 * this.frame + 1000
 					for(var i in printNumbers){
 						times[printNumbers[i]] = lastTime + 500
-						lastTime = lastTime + 500 + results[printNumbers[i]].length * 30 * this.frame
+						lastTime = lastTime + 500 + this.getResultValue(results, printNumbers[i]).length * 30 * this.frame
 					}
 					this.state["countupTime" + p] = times
 				}
 				
 				for(var i in printNumbers){
 					var start = this.state["countupTime" + p][printNumbers[i]]
-					var isAdlib = printNumbers[i] === "adlib"
-					if(isAdlib){
-						var resultsNumber = (results.adlibTotal > 0 ? Math.floor(results.adlib / results.adlibTotal * 100) : 0).toString()
-					}else{
-						var resultsNumber = results[printNumbers[i]]
-					}
+					var resultsNumber = this.getResultValue(results, printNumbers[i])
 					this.draw.layeredText({
 						ctx: ctx,
 						text: this.getNumber(resultsNumber, start, elapsed),
-						x: 971 + 270 * Math.floor(i / 3) - (isAdlib ? 25 : 0),
+						x: 971 + 270 * Math.floor(i / 3),
 						y: 196 + (40 * (i % 3)),
 						fontSize: 26,
 						fontFamily: this.numbersFont,
-						letterSpacing: isAdlib ? -1 : 1,
+						letterSpacing: 1,
 						align: "right"
 					}, [
 						{outline: "#000", letterBorder: 9},
@@ -938,6 +921,11 @@ class Scoresheet{
 		ctx.restore()
 	}
 	
+	getResultValue(results, name){
+		var value = results && results[name]
+		return (value === undefined || value === null ? 0 : value).toString()
+	}
+
 	getNumber(score, start, elapsed){
 		var numberPos = Math.floor((elapsed - start) / this.frame)
 		if(numberPos < 0){

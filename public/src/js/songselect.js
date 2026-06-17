@@ -910,6 +910,11 @@ class SongSelect{
 		return modifiers.mode === 1 || modifiers.note !== 0
 	}
 
+	autoUnavailableIn2P(modifiers){
+		modifiers = modifiers || this.getSelectedModifiers()
+		return p2.session && modifiers.mode === 1
+	}
+
 	getOptionMenuLayout(){
 		var scale = 0.8
 		var rowH = 56 * scale
@@ -1138,24 +1143,32 @@ class SongSelect{
 				{outline: "#fff", letterBorder: 5 * scale},
 				{fill: "#273a13"}
 			])
-		}
-		if(this.modifiersDisableScore()){
-			var warningY = layout.bottomY + 34 * scale
-			this.draw.layeredText({
-				ctx: ctx,
-				text: strings.scoreNotSavedWarning,
-				fontSize: 20 * scale,
-				fontFamily: this.font,
-				x: layout.x + layout.w / 2,
-				y: warningY,
-				width: layout.w - 36 * scale,
-				align: "center",
-				baseline: "middle"
-			}, [
-				{outline: "#fff", letterBorder: 5 * scale},
-				{fill: "#d12f24"}
-			])
-		}
+			}
+			var modifiers = this.getSelectedModifiers()
+			var warnings = []
+			if(this.autoUnavailableIn2P(modifiers)){
+				warnings.push(strings.autoUnavailable2PWarning)
+			}
+			if(this.modifiersDisableScore(modifiers)){
+				warnings.push(strings.scoreNotSavedWarning)
+			}
+			for(var i = 0; i < warnings.length; i++){
+				var warningY = layout.bottomY + (28 + i * 24) * scale
+				this.draw.layeredText({
+					ctx: ctx,
+					text: warnings[i],
+					fontSize: 20 * scale,
+					fontFamily: this.font,
+					x: layout.x + layout.w / 2,
+					y: warningY,
+					width: layout.w - 36 * scale,
+					align: "center",
+					baseline: "middle"
+				}, [
+					{outline: "#fff", letterBorder: 5 * scale},
+					{fill: "#d12f24"}
+				])
+			}
 		ctx.restore()
 	}
 
@@ -1738,13 +1751,16 @@ class SongSelect{
 		
 		mods.speed = selectedModifiers.speed
 		mods.inverse = selectedModifiers.inverse
-		mods.shuffle = selectedModifiers.shuffle
-		mods.doron = selectedModifiers.doron
-		mods.hardcore = selectedModifiers.hardcore
-		mods.allDon = selectedModifiers.note === 1
-		mods.allKat = selectedModifiers.note === 2
-		
-		var diff = this.difficultyId[difficulty]
+			mods.shuffle = selectedModifiers.shuffle
+			mods.doron = selectedModifiers.doron
+			mods.hardcore = selectedModifiers.hardcore
+			mods.allDon = selectedModifiers.note === 1
+			mods.allKat = selectedModifiers.note === 2
+			if(mods.shuffle > 0){
+				mods.shuffleSeed = Math.floor(Math.random() * 0xFFFFFFFF) + 1
+			}
+			
+			var diff = this.difficultyId[difficulty]
 		
 		new LoadSong({
 			"title": selectedSong.title,

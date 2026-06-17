@@ -2270,9 +2270,11 @@
 
 		var ctx = this.ctx
 		var mul = this.slotPos.size / 106
-		var scale = (this.portrait ? 0.64 : 0.7) * 1.4 * mul
-		var centerX = this.portrait ? Math.max(220, this.slotPos.x + 150 * mul) : this.slotPos.x - 28 * mul
-		var centerY = this.slotPos.y - (this.portrait ? 170 : 165) * mul
+			var scale = (this.portrait ? 0.64 : 0.7) * 1.4 * mul
+			var centerX = this.portrait ? Math.max(220, this.slotPos.x + 150 * mul) : this.slotPos.x - 28 * mul
+			var yOffset = (this.portrait ? 170 : 165) * mul
+			var p2ExtraY = this.player === 2 ? 24 * mul : 0
+			var centerY = this.slotPos.y + (this.player === 2 ? yOffset : -yOffset) + p2ExtraY
 		var alpha = 1
 		if(ms > state.hideMS){
 			alpha = Math.max(0, 1 - (ms - state.hideMS) / 166)

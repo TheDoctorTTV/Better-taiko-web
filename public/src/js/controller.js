@@ -27,7 +27,7 @@ class Controller{
 				face_fill: defaultDon.body_fill
 			}
 		}
-		
+
 		this.calibrationMode = selectedSong.folder === "calibration"
 		this.audioLatency = 0
 		this.videoLatency = 0
@@ -41,19 +41,22 @@ class Controller{
 		if(this.multiplayer !== 2){
 			loader.changePage("game", false)
 		}
-		
+
 		if(selectedSong.type === "tja"){
-			this.parsedSongData = new ParseTja(songData, selectedSong.difficulty, selectedSong.stars, selectedSong.offset, false, selectedSong.mods)
+			this.parsedSongData = new ParseTja(songData, selectedSong.difficulty, selectedSong.stars, selectedSong.offset, false, selectedSong.mods, {
+				player: this.getTjaChartPlayer(),
+				usePlayerSections: this.multiplayer && selectedSong.tjaUsePlayerSections
+			})
 		}else{
 			this.parsedSongData = new ParseOsu(songData, selectedSong.difficulty, selectedSong.stars, selectedSong.offset, false, selectedSong.mods)
 		}
 		this.offset = this.parsedSongData.soundOffset
-		
+
 		var maxCombo = this.parsedSongData.circles.filter(circle => ["don", "ka", "daiDon", "daiKa"].indexOf(circle.type) > -1 && (!circle.branch || circle.branch.name == "master")).length
 		if (maxCombo >= 50) {
 			var comboVoices = ["v_combo_50"].concat(Array.from(Array(Math.min(50, Math.floor(maxCombo / 100))), (d, i) => "v_combo_" + ((i + 1) * 100)))
 			var promises = []
-			
+
 			comboVoices.forEach(name => {
 				if (!assets.sounds[name + "_p1"]) {
 					promises.push(loader.loadSound(name + ".ogg", snd.sfxGain).then(sound => {
@@ -62,10 +65,10 @@ class Controller{
 					}))
 				}
 			})
-			
+
 			Promise.all(promises)
 		}
-		
+
 		if(this.calibrationMode){
 			this.volume = 1
 		}else{
@@ -85,7 +88,7 @@ class Controller{
 				}
 			})
 		}
-		
+
 		this.game = new Game(this, this.selectedSong, this.parsedSongData)
 		this.view = new View(this)
 		this.mekadon = new Mekadon(this, this.game)
@@ -95,9 +98,21 @@ class Controller{
 		}else{
 			this.easierBigNotes = false
 		}
-		
+
 		this.drumSounds = settings.getItem("latency").drumSounds
 		this.playedSounds = {}
+	}
+	getTjaChartPlayer(){
+		if(this.selectedSong.tjaChartPlayer === 1 || this.selectedSong.tjaChartPlayer === 2){
+			return this.selectedSong.tjaChartPlayer
+		}
+		if(!this.multiplayer){
+			return 1
+		}
+		if(this.multiplayer === 2){
+			return p2.player === 2 ? 1 : 2
+		}
+		return p2.player === 2 ? 2 : 1
 	}
 	run(syncWith){
 		if(syncWith){
@@ -154,7 +169,7 @@ class Controller{
 				this.syncWith.game.startDate = this.game.startDate
 			}
 			var ms = this.game.elapsedTime
-			
+
 			if(this.game.musicFadeOut < 3){
 				this.keyboard.checkMenuKeys()
 			}
@@ -163,7 +178,7 @@ class Controller{
 			}
 			if(!this.game.isPaused()){
 				this.keyboard.checkGameKeys()
-				
+
 				if(ms < 0){
 					this.game.updateTime()
 				}else{
@@ -412,7 +427,7 @@ class Controller{
 		this.keyboard.clean()
 		this.view.clean()
 		snd.buffer.loadSettings()
-		
+
 		if(!this.multiplayer){
 			debugObj.controller = null
 			if(debugObj.debug){
@@ -434,21 +449,21 @@ class Controller{
 		if (this.mods.inverse) {
 			badges.push("badge_s1")
 		}
-		if (this.mods.shuffle > 0) { 
+		if (this.mods.shuffle > 0) {
 			badges.push("badge_s" + this.mods.shuffle.toString())
 		}
-		if (this.mods.doron) { 
+		if (this.mods.doron) {
 			badges.push("badge_doron")
 		}
-		if (this.mods.hardcore) { 
+		if (this.mods.hardcore) {
 			badges.push("badge_kanbeki")
 		}
-		if (this.mods.allDon) { 
+		if (this.mods.allDon) {
 			badges.push("badge_don")
-		} else if (this.mods.allKat) {			
+		} else if (this.mods.allKat) {
 			badges.push("badge_kat")
 		}
-		
+
 		return badges
 	}
 	getModBadge() {
