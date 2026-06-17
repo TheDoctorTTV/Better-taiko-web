@@ -1,5 +1,8 @@
 class Loader{
-	constructor(callback){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(callback){
 		this.callback = callback
 		this.loadedAssets = 0
 		this.assetsDiv = document.getElementById("assets")
@@ -164,7 +167,7 @@ class Loader{
 						song.lyricsFile = new RemoteFile(directory + "main.vtt")
 					}
 					if(song.preview > 0){
-						song.previewMusic = new RemoteFile(directory + "preview.mp3")
+						song.previewMusic = new RemoteFile(directory + "preview." + gameConfig.preview_type)
 					}
 				})
 				assets.songsDefault = songs
@@ -180,7 +183,7 @@ class Loader{
 					var image = document.createElement("img")
 					var url = gameConfig.assets_baseurl + "img/" + name
 					categoryPromises.push(pageEvents.load(image).catch(response => {
-						this.errorMsg(response, url)
+						return this.errorMsg(response, url)
 					}))
 					image.id = name
 					image.src = url
@@ -253,6 +256,11 @@ class Loader{
 			pageEvents.setKbd()
 			scoreStorage = new ScoreStorage()
 			db = new IDB("taiko", "store")
+			plugins = new Plugins()
+
+			if(localStorage.getItem("lastSearchQuery")){
+				localStorage.removeItem("lastSearchQuery")
+			}
 			
 			Promise.all(this.promises).then(() => {
 				if(this.error){
@@ -319,17 +327,38 @@ class Loader{
 					p2.hash("")
 				}
 				
-				promises.push(this.canvasTest.drawAllImages())
-				
-				Promise.all(promises).then(result => {
+				promises.push(this.canvasTest.drawAllImages().then(result => {
 					perf.allImg = result
+				}))
+				
+				if(gameConfig.plugins){
+					gameConfig.plugins.forEach(obj => {
+						if(obj.url){
+							var plugin = plugins.add(obj.url, {
+								hide: obj.hide
+							})
+							if(plugin){
+								plugin.loadErrors = true
+								promises.push(plugin.load(true).then(() => {
+									if(obj.start){
+										plugin.start()
+									}
+								}, response => {
+									return this.errorMsg(response, obj.url)
+								}))
+							}
+						}
+					})
+				}
+
+				Promise.all(promises).then(() => {
 					perf.load = Date.now() - this.startTime
 					this.canvasTest.clean()
 					this.clean()
 					this.callback(songId)
 					pageEvents.send("ready", readyEvent)
-				})
-			}, this.errorMsg.bind(this))
+				}, () => this.errorMsg())
+			}, () => this.errorMsg())
 		})
 	}
 	addPromise(promise, url){
@@ -429,6 +458,7 @@ class Loader{
 		}
 		var percentage = Math.floor(this.loadedAssets * 100 / (this.promises.length + this.afterJSCount))
 		this.errorTxt.element[this.errorTxt.method] = "```\n" + this.errorMessages.join("\n") + "\nPercentage: " + percentage + "%\n```"
+		return Promise.reject(error)
 	}
 	assetLoaded(){
 		if(!this.error){

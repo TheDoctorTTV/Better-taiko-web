@@ -1,12 +1,19 @@
 ﻿class ImportSongs{
-	constructor(limited, otherFiles){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(limited, otherFiles, noPlugins, pluginAmount){
 		this.limited = limited
 		this.tjaFiles = []
 		this.osuFiles = []
 		this.assetFiles = {}
+		this.pluginFiles = []
 		this.otherFiles = otherFiles || {}
+		this.noPlugins = noPlugins
+		this.pluginAmount = pluginAmount
 		this.songs = []
 		this.stylesheet = []
+		this.plugins = []
 		this.songTitle = this.otherFiles.songTitle || {}
 		this.uraRegex = /\s*[\(（]裏[\)）]$/
 		this.courseTypes = {
@@ -41,14 +48,41 @@
 			"bg_stage_1": ".song-stage-1",
 			"bg_stage_2": ".song-stage-2",
 			"bg_stage_3": ".song-stage-3"
+			}
+			this.comboVoices = ["v_combo_50"].concat(Array.from(Array(50), (d, i) => "v_combo_" + ((i + 1) * 100)))
 		}
-		this.comboVoices = ["v_combo_50"].concat(Array.from(Array(50), (d, i) => "v_combo_" + ((i + 1) * 100)))
-	}
-	load(files){
-		var extensionRegex = /\.[^\/]+$/
-		files.sort((a, b) => {
-			var path1 = a.path.replace(extensionRegex, "")
-			var path2 = b.path.replace(extensionRegex, "")
+		getTjaLanguageAliases(lang){
+			if(lang === "cn"){
+				return ["cn", "zh"]
+			}else if(lang === "tw"){
+				return ["tw", "zh"]
+			}else if(lang === "ko"){
+				return ["ko", "kr"]
+			}
+			return [lang]
+		}
+		getTjaMetaValue(meta, field, lang){
+			var aliases = this.getTjaLanguageAliases(lang)
+			for(var i = 0; i < aliases.length; i++){
+				var value = meta[field + aliases[i]]
+				if(value){
+					return value
+				}
+			}
+			return ""
+		}
+		normalizeTjaSubtitle(subtitle){
+			subtitle = subtitle || ""
+			if(subtitle.startsWith("--") || subtitle.startsWith("++")){
+				subtitle = subtitle.slice(2).trim()
+			}
+			return subtitle
+		}
+		load(files){
+			var extensionRegex = /\.[^\/]+$/
+			files.sort((a, b) => {
+				var path1 = a.path.replace(extensionRegex, "")
+				var path2 = b.path.replace(extensionRegex, "")
 			return path1 > path2 ? 1 : -1
 		})
 		
@@ -77,11 +111,48 @@
 				if(!(name in this.assetFiles)){
 					this.assetFiles[name] = file
 				}
+			}else if(name.endsWith(".taikoweb.js")){
+				this.pluginFiles.push({
+					file: file,
+					index: i
+				})
 			}else{
 				this.otherFiles[path] = file
 			}
 		}
 		
+		if(!this.noPlugins && this.pluginFiles.length){
+			var pluginPromises = []
+			this.pluginFiles.forEach(fileObj => {
+				pluginPromises.push(this.addPlugin(fileObj).catch(e => console.warn(e)))
+			})
+			return Promise.all(pluginPromises).then(() => {
+				var startPromises = []
+				var pluginAmount = 0
+				if(this.plugins.length && confirm(strings.plugins.warning.replace("%s",
+					strings.plugins.plugin[strings.plural.select(this.plugins.length)].replace("%s",
+						this.plugins.length.toString()
+					)
+				))){
+					this.plugins.forEach(obj => {
+						var plugin = plugins.add(obj.data, {
+							name: obj.name,
+							raw: true
+						})
+						if(plugin){
+							pluginAmount++
+							plugin.imported = true
+							startPromises.push(plugin.start())
+						}
+					})
+				}
+				return Promise.all(startPromises).then(() => {
+					var importSongs = new ImportSongs(this.limited, this.otherFiles, true, pluginAmount)
+					return importSongs.load(files)
+				})
+			})
+		}
+
 		var metaPromises = []
 		metaFiles.forEach(fileObj => {
 			metaPromises.push(this.addMeta(fileObj))
@@ -217,11 +288,10 @@
 			for(var diff in tja.metadata){
 				var meta = tja.metadata[diff]
 				songObj.title = meta.title || file.name.slice(0, file.name.lastIndexOf("."))
-				var subtitle = meta.subtitle || ""
-				if(subtitle.startsWith("--") || subtitle.startsWith("++")){
-					subtitle = subtitle.slice(2).trim()
-				}
+				songObj.tja_title = songObj.title
+				var subtitle = this.normalizeTjaSubtitle(meta.subtitle)
 				songObj.subtitle = subtitle
+				songObj.tja_subtitle = subtitle
 				songObj.preview = meta.demostart || 0
 				songObj.courses[diff] = {
 					stars: meta.level || 0,
@@ -281,15 +351,17 @@
 							songTitle = songTitle.slice(0, uraPos)
 						}
 					}
-					if(meta["title" + id]){
-						titleLang[id] = meta["title" + id]
+					var translatedTitle = this.getTjaMetaValue(meta, "title", id)
+					if(translatedTitle){
+						titleLang[id] = translatedTitle
 						titleLangAdded = true
 					}else if(songTitle in this.songTitle && this.songTitle[songTitle][id]){
 						titleLang[id] = this.songTitle[songTitle][id] + ura
 						titleLangAdded = true
 					}
-					if(meta["subtitle" + id]){
-						subtitleLang[id] = meta["subtitle" + id]
+					var translatedSubtitle = this.getTjaMetaValue(meta, "subtitle", id)
+					if(translatedSubtitle){
+						subtitleLang[id] = this.normalizeTjaSubtitle(translatedSubtitle)
 						subtitleLangAdded = true
 					}
 				}
@@ -468,6 +540,18 @@
 		return name.slice(0, name.lastIndexOf("."))
 	}
 	
+	addPlugin(fileObj){
+		var file = fileObj.file
+		var filePromise = file.read()
+		return filePromise.then(dataRaw => {
+			var name = file.name.slice(0, file.name.lastIndexOf(".taikoweb.js"))
+			this.plugins.push({
+				name: name,
+				data: dataRaw
+			})
+		})
+	}
+
 	getCategory(file, exclude){
 		var path = file.path.toLowerCase().split("/")
 		for(var i = path.length - 2; i >= 0; i--){
@@ -543,10 +627,12 @@
 				assets.otherFiles.songTitle = this.songTitle
 			}
 			return Promise.resolve(this.songs)
-		}else if(Object.keys(this.assetFiles).length){
-			return Promise.resolve()
 		}else{
-			return Promise.reject("nosongs")
+			if(this.noPlugins && this.pluginAmount || Object.keys(this.assetFiles).length){
+				return Promise.resolve()
+			}else{
+				return Promise.reject("nosongs")
+			}
 		}
 		this.clean()
 	}

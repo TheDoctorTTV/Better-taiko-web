@@ -1,5 +1,8 @@
 class Account{
-	constructor(touchEnabled){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(touchEnabled){
 		this.touchEnabled = touchEnabled
 		cancelTouch = false
 		this.locked = false
@@ -43,6 +46,8 @@ class Account{
 		this.inputForms.push(this.displayname)
 		
 		this.redrawRunning = true
+		this.redrawPaused = matchMedia("(prefers-reduced-motion: reduce)").matches
+		this.redrawForce = true
 		this.customdonRedrawBind = this.customdonRedraw.bind(this)
 		this.start = new Date().getTime()
 		this.frames = [
@@ -55,6 +60,7 @@ class Account{
 		this.customdonCache.resize(723 * 2, 1858, 1)
 		this.customdonCanvas = this.getElement("customdon-canvas")
 		this.customdonCtx = this.customdonCanvas.getContext("2d")
+		pageEvents.add(this.customdonCanvas, "click", this.customdonPause.bind(this))
 		this.customdonBodyFill = this.getElement("customdon-bodyfill")
 		this.customdonBodyFill.value = account.don.body_fill
 		var parent = this.customdonBodyFill.parentNode
@@ -82,6 +88,14 @@ class Account{
 			this.inputForms.push(this.accountPass[i])
 		}
 		this.accountPassDiv = this.getElement("accountpass-div")
+		
+		this.forgetPassButton = this.getElement("forgetpass-btn")
+		this.setAltText(this.forgetPassButton, strings.account.forgetPass)
+		pageEvents.add(this.forgetPassButton, ["click", "touchstart"], event => {
+			this.showDiv(event, "forPass")
+		})
+		this.accountForPass = this.getElement("forgetpass-form")
+		this.accountForPassDiv = this.getElement("forgetpass-div")
 		
 		this.accountDelButton = this.getElement("accountdel-btn")
 		this.setAltText(this.accountDelButton, strings.account.deleteAccount)
@@ -117,6 +131,11 @@ class Account{
 			pageEvents.add(this.inputForms[i], ["keydown", "keyup", "keypress"], this.onFormPress.bind(this))
 		}
 	}
+	customdonPause(){
+		this.redrawPaused = !this.redrawPaused
+		this.redrawForce = true
+		this.start = new Date().getTime()
+	}
 	customdonChange(){
 		var ctx = this.customdonCtx
 		this.customdonCache.clear()
@@ -145,6 +164,7 @@ class Account{
 				id: "bodyFill"
 			})
 		})
+		this.redrawForce = true
 	}
 	customdonReset(event){
 		if(event.type === "touchstart"){
@@ -159,12 +179,16 @@ class Account{
 			return
 		}
 		requestAnimationFrame(this.customdonRedrawBind)
-		if(!document.hasFocus()){
+		if(!document.hasFocus() || this.redrawPaused && !this.redrawForce){
 			return
 		}
 		var ms = new Date().getTime()
 		var ctx = this.customdonCtx
-		var frame = this.frames[Math.floor((ms - this.start) / 30) % this.frames.length]
+		if(this.redrawPaused){
+			var frame = 0
+		}else{
+			var frame = this.frames[Math.floor((ms - this.start) / 30) % this.frames.length]
+		}
 		var w = 360
 		var h = 184
 		var sx = Math.floor(frame / 10) * (w + 2)
@@ -180,6 +204,7 @@ class Account{
 			sx, sy, w, h,
 			-26, 0, w, h
 		)
+		this.redrawForce = false
 	}
 	showDiv(event, div){
 		if(event){
@@ -199,14 +224,23 @@ class Account{
 			case "pass":
 				if(otherDiv){
 					this.accountDelDiv.style.display = ""
+					this.accountForPassDiv.style.display = ""
 				}
 				this.accountPassDiv.style.display = display
 				break
 			case "del":
 				if(otherDiv){
 					this.accountPassDiv.style.display = ""
+					this.accountForPassDiv.style.display = ""
 				}
 				this.accountDelDiv.style.display = display
+				break
+			case "forPass":
+				if(otherDiv){
+					this.accountDelDiv.style.display = ""
+					this.accountPassDiv.style.display = ""
+				}
+				this.accountForPassDiv.style.display = display
 				break
 		}
 	}
@@ -315,6 +349,7 @@ class Account{
 	onFormPress(event){
 		event.stopPropagation()
 		if(event.type === "keypress" && event.keyCode === 13){
+			event.preventDefault()
 			if(this.mode === "account"){
 				this.onSave()
 			}else{
@@ -608,6 +643,7 @@ class Account{
 			}
 			this.redrawRunning = false
 			this.customdonCache.clean()
+			pageEvents.remove(this.customdonCanvas, "click")
 			pageEvents.remove(this.customdonBodyFill, ["change", "input"])
 			pageEvents.remove(this.customdonFaceFill, ["change", "input"])
 			pageEvents.remove(this.customdonResetBtn, ["click", "touchstart"])

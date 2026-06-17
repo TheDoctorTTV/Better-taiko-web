@@ -143,4 +143,23 @@
 		"bg_img": "bg_genre_6.png"
 	},
 	"aliases": null
+},{
+	"id": 8,
+	"title": "創作譜面",
+	"title_lang": {
+		"ja": "創作譜面",
+		"en": "創作譜面",
+		"cn": "創作譜面",
+		"tw": "創作譜面",
+		"ko": "創作譜面"
+	},
+	"song_skin": {
+		"sort": 8,
+		"background": "#b1e200",
+		"border": ["#b1e200", "#b1e200"],
+		"outline": "#018d00",
+		"info_fill": "#018d00",
+		"bg_img": "bg_genre_3.png"
+	},
+	"aliases": null
 }]

@@ -1,5 +1,8 @@
 class Lyrics{
-	constructor(file, songOffset, div, parsed){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(file, songOffset, div, parsed){
 		this.div = div
 		this.stroke = document.createElement("div")
 		this.stroke.classList.add("stroke")
@@ -74,7 +77,7 @@ class Lyrics{
 								break
 							}
 							var lang = text.slice(index1 + 6, index2).toLowerCase()
-							if(strings.id === lang){
+							if(strings.preferEn && lang === "en" || strings.id === lang){
 								var index3 = text.indexOf("<lang ", index2 + 1)
 								if(index3 !== -1){
 									textLang = text.slice(index2 + 1, index3)

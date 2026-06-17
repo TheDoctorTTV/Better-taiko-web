@@ -1,5 +1,8 @@
 ﻿class CanvasDraw{
-	constructor(noSmoothing){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(noSmoothing){
 		this.diffStarPath = new Path2D(vectors.diffStar)
 		this.longVowelMark = new Path2D(vectors.longVowelMark)
 		
@@ -39,6 +42,7 @@
 		
 		this.crownPath = new Path2D(vectors.crown)
 		this.soulPath = new Path2D(vectors.soul)
+		this.gaugeRainbowStart = {}
 		
 		this.optionsPath = {
 			main: new Path2D(vectors.options),
@@ -154,7 +158,7 @@
 			ctx.fillRect(0, 0, w, h)
 		}
 		if(config.cached){
-			if(this.songFrameCache.w !== config.frameCache.w){
+			if(this.songFrameCache.w !== config.frameCache.w || this.songFrameCache.scale !== config.frameCache.ratio){
 				this.songFrameCache.resize(config.frameCache.w, config.frameCache.h, config.frameCache.ratio)
 			}
 			this.songFrameCache.get({
@@ -308,7 +312,7 @@
 	
 	verticalText(config){
 		var ctx = config.ctx
-		var inputText = config.text.toString()
+		var inputText = "" + config.text
 		var mul = config.fontSize / 40
 		var ura = false
 		var r = this.regex
@@ -634,7 +638,7 @@
 	
 	layeredText(config, layers){
 		var ctx = config.ctx
-		var inputText = config.text.toString()
+		var inputText = "" + config.text
 		var mul = config.fontSize / 40
 		var ura = false
 		var r = this.regex
@@ -1121,6 +1125,11 @@
 			ctx.translate(2, -2)
 			ctx.fillStyle = "#d9d6ce"
 			ctx.fill(this.optionsPath.main)
+		}else if(config.iconName === "sounds"){
+			var note = assets.image["yatai_diff_sounds_icon_user"]
+			if(note){
+				ctx.drawImage(note, config.x - 21, config.y - 24, 42, 45)
+			}
 		}
 		
 		ctx.restore()
@@ -1400,6 +1409,56 @@
 		ctx.restore()
 	}
 	
+	getGaugeRainbowImage(config){
+		if(config.clear <= 31 / 50){
+			return assets.image["yatai_gauge_rainbow_easy"]
+		}else if(config.clear <= 36 / 50){
+			return assets.image["yatai_gauge_rainbow_normal"]
+		}
+		return assets.image["yatai_gauge_rainbow_hard"]
+	}
+	
+	drawGaugeRainbow(ctx, config){
+		var img = this.getGaugeRainbowImage(config)
+		if(!img || !img.complete || !img.naturalWidth){
+			return
+		}
+		
+		var key = [
+			config.scoresheet ? "result" : "game",
+			config.multiplayer ? "p2" : "p1",
+			config.blue ? "blue" : "red"
+		].join("-")
+		var full = config.percentage >= 1
+		var now = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now()
+		if(full){
+			if(this.gaugeRainbowStart[key] == null){
+				this.gaugeRainbowStart[key] = now
+			}
+		}else{
+			delete this.gaugeRainbowStart[key]
+			return
+		}
+		
+		var elapsed = now - this.gaugeRainbowStart[key]
+		var fade = Math.min(1, elapsed / 166)
+		var frameProgress = (elapsed / 75) % 8
+		var frameA = Math.floor(frameProgress)
+		var frameB = (frameA + 1) % 8
+		var t = frameProgress - frameA
+		var dx = -6
+		var dy = config.multiplayer ? -8 : -8
+		var dw = 712
+		var dh = 64
+		
+		ctx.save()
+		ctx.globalAlpha *= fade
+		ctx.drawImage(img, 0, frameA * dh, dw, dh, dx, dy, dw, dh)
+		ctx.globalAlpha *= t
+		ctx.drawImage(img, 0, frameB * dh, dw, dh, dx, dy, dw, dh)
+		ctx.restore()
+	}
+	
 	gauge(config){
 		var ctx = config.ctx
 		ctx.save()
@@ -1496,6 +1555,7 @@
 			ctx.fillRect(gaugeClear, secondTop, 10, 3)
 			ctx.restore()
 		}
+		this.drawGaugeRainbow(ctx, config)
 		
 		ctx.strokeStyle = "rgba(0, 0, 0, 0.16)"
 		ctx.beginPath()
@@ -1707,8 +1767,8 @@
 		if(amount >= 1){
 			return callback(ctx)
 		}else if(amount >= 0){
-			this.tmpCanvas.width = winW || ctx.canvas.width
-			this.tmpCanvas.height = winH || ctx.canvas.height
+			this.tmpCanvas.width = Math.max(1, winW || ctx.canvas.width)
+			this.tmpCanvas.height = Math.max(1, winH || ctx.canvas.height)
 			callback(this.tmpCtx)
 			ctx.save()
 			ctx.globalAlpha = amount

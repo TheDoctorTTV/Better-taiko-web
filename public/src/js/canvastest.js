@@ -1,11 +1,14 @@
 class CanvasTest{
-	constructor(){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(){
 		this.canvas = document.createElement("canvas")
 		var pixelRatio = window.devicePixelRatio || 1
 		var width = innerWidth * pixelRatio
 		var height = innerHeight * pixelRatio
-		this.canvas.width = width
-		this.canvas.height = height
+		this.canvas.width = Math.max(1, width)
+		this.canvas.height = Math.max(1, height)
 		this.ctx = this.canvas.getContext("2d")
 		this.ctx.scale(pixelRatio, pixelRatio)
 		this.ratio = pixelRatio

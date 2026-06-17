@@ -1,5 +1,8 @@
 class CanvasCache{
-	constructor(noSmoothing, w, h, scale){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(noSmoothing, w, h, scale){
 		this.noSmoothing = noSmoothing
 		if(w){
 			this.resize(w, h, scale)
@@ -24,8 +27,8 @@ class CanvasCache{
 		this.h = h
 		this.lastW = 0
 		this.lastH = 0
-		this.canvas.width = this.w * this.scale
-		this.canvas.height = this.h * this.scale
+		this.canvas.width = Math.max(1, this.w * this.scale)
+		this.canvas.height = Math.max(1, this.h * this.scale)
 		this.ctx.scale(this.scale, this.scale)
 	}
 	get(config, callback, setOnly){

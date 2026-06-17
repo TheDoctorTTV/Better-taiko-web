@@ -1,5 +1,8 @@
 class Game{
-	constructor(controller, selectedSong, songData){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(controller, selectedSong, songData){
 		this.controller = controller
 		this.selectedSong = selectedSong
 		this.songData = songData
@@ -426,19 +429,25 @@ class Game{
 		return true
 	}
 	checkBalloon(circle){
+		var ms = this.elapsedTime
+		var popped = false
 		if(circle.timesHit >= circle.requiredHits - 1){
 			var score = 5000
 			this.updateCurrentCircle()
 			circle.hit()
 			circle.played(score)
+			popped = true
 			if(this.controller.multiplayer == 1){
 				p2.send("drumroll", {
-					pace: (this.elapsedTime - circle.ms + this.controller.audioLatency) / circle.timesHit
+					pace: (ms - circle.ms + this.controller.audioLatency) / circle.timesHit
 				})
 			}
 		}else{
 			var score = 300
 			circle.hit()
+		}
+		if(this.view && this.view.showBalloonCounter){
+			this.view.showBalloonCounter(circle, circle.timesHit, ms, popped)
 		}
 		this.globalScore.drumroll++
 		this.sectionDrumroll++
@@ -453,6 +462,9 @@ class Game{
 			this.resetSection()
 		}
 		circle.hit(keysKa)
+		if(this.view && this.view.showDrumrollCounter){
+			this.view.showDrumrollCounter(circle, circle.timesHit, ms)
+		}
 		var keyTime = this.controller.getKeyTime()
 		if(circle.type === "drumroll"){
 			var sound = keyTime["don"] > keyTime["ka"] ? "don" : "ka"
@@ -469,6 +481,7 @@ class Game{
 			fixedPos: document.hasFocus()
 		})
 		circleAnim.played(score, dai)
+		circleAnim.isRoll = true
 		circleAnim.animate(ms)
 		this.view.drumroll.push(circleAnim)
 		this.globalScore.drumroll++
@@ -485,9 +498,6 @@ class Game{
 		var ms = this.elapsedTime
 		if(!this.lastCircle){
 			var circles = this.songData.circles
-			if(circles[this.currentCircle].type === "adlib"){
-			this.globalScore.adlibTotal++
-		}
 			var circle = this.getLastCircle(circles)
 			this.lastCircle = circle ? circle.endTime : 0
 			if(this.controller.multiplayer){
@@ -526,10 +536,10 @@ class Game{
 					p2.send("gameend")
 				}
 				this.musicFadeOut++
-			}else if(this.musicFadeOut === 2 && (ms >= started + 8600 && ms >= musicDuration + 250)){
+			}else if(this.musicFadeOut === 2 && (ms >= Math.max(started + 8600, Math.min(started + 8600 + 5000, musicDuration + 250)))){
 				this.controller.displayResults()
 				this.musicFadeOut++
-			}else if(this.musicFadeOut === 3 && (ms >= started + 9600 && ms >= musicDuration + 1250)){
+			}else if(this.musicFadeOut === 3 && (ms >= Math.max(started + 9600, Math.min(started + 9600 + 5000, musicDuration + 1250)))){
 				this.controller.clean()
 				if(this.controller.scoresheet){
 					this.controller.scoresheet.startRedraw()

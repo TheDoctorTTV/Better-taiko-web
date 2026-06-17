@@ -117,10 +117,7 @@ class SongSelect{
 		
 		this.songs = []
 		for(let song of assets.songs){
-			var title = this.getLocalTitle(song.title, song.title_lang)
-			song.titlePrepared = title ? fuzzysort.prepare(title.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) : null
-			var subtitle = this.getLocalTitle(title === song.title ? song.subtitle : "", song.subtitle_lang)
-			song.subtitlePrepared = subtitle ? fuzzysort.prepare(subtitle.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) : null
+			this.updateSongSearchText(song)
 			this.songs.push(this.addSong(song))
 		}
 		this.songs.sort((a, b) => {
@@ -253,7 +250,8 @@ class SongSelect{
 			letterSpacing: -4
 		}]
 		this.optionsList = [strings.none, strings.auto, strings.netplay, strings.songMods.x2, strings.songMods.x3, strings.songMods.x4,strings.songMods.doron, strings.songMods.reverse, strings.songMods.half_shuffle, strings.songMods.shuffle, strings.songMods.hardcore, strings.songMods.allDon, strings.songMods.allKat]
-		this.soundList = [strings.taikoS, strings.testS, strings.s3, strings.s4, strings.s5, strings.s6, strings.s7, strings.s8, strings.s9, strings.s10, strings.s11, strings.s12, strings.s13, strings.s14, strings.s15, strings.s16, strings.s17, strings.s18, strings.s19, strings.s20, strings.s21, strings.s22, strings.s23, strings.s24, strings.s25, strings.s26, strings.s27, strings.s28, strings.s29, strings.s30]
+		this.optionRows = this.getOptionRows()
+		this.soundList = [strings.taikoS, strings.testS, strings.s3, strings.s4, strings.s5, strings.s6, strings.s7, strings.s8, strings.s9, strings.s10, strings.s11, strings.s12, strings.s13, strings.s14, strings.s15, strings.s16, strings.s17, strings.s18, strings.s19, strings.s20, strings.s21, strings.s22, strings.s23, strings.s24, strings.s25, strings.s26, strings.s27, strings.s28]
 		this.draw = new CanvasDraw(noSmoothing)
 		this.songTitleCache = new CanvasCache(noSmoothing)
 		this.selectTextCache = new CanvasCache(noSmoothing)
@@ -338,6 +336,10 @@ class SongSelect{
 			locked: true,
 			hasPointer: false,
 			options: 0,
+			modifiers: this.defaultModifierState(),
+			optionMenuOpen: false,
+			optionMenuRow: 0,
+			optionMenuHoverRow: null,
 			sound: 0,
 			selLock: false,
 			catJump: false,
@@ -415,6 +417,746 @@ class SongSelect{
 	setAltText(element, text){
 		element.innerText = text
 		element.setAttribute("alt", text)
+	}
+
+	localizedOptionText(labels){
+		return labels[strings.id] || labels.en || labels.ja || ""
+	}
+
+	getTjaTitleLanguage(){
+		var value = settings && settings.getItem ? settings.getItem("tjaTitle") : "title"
+		return value && value !== "title" ? value.slice("title".length) : null
+	}
+
+	getTjaLanguageAliases(lang){
+		if(lang === "cn"){
+			return ["cn", "zh"]
+		}else if(lang === "tw"){
+			return ["tw", "zh"]
+		}else if(lang === "ko"){
+			return ["ko", "kr"]
+		}
+		return [lang]
+	}
+
+	getTjaLocalizedValue(values, lang){
+		if(!values || !lang){
+			return ""
+		}
+		var aliases = this.getTjaLanguageAliases(lang)
+		for(var i = 0; i < aliases.length; i++){
+			var value = values[aliases[i]]
+			if(value){
+				return value
+			}
+		}
+		return ""
+	}
+
+	normalizeTjaSubtitle(subtitle){
+		subtitle = subtitle || ""
+		if(subtitle.startsWith("--") || subtitle.startsWith("++")){
+			subtitle = subtitle.slice(2).trim()
+		}
+		return subtitle
+	}
+
+	isTjaSong(song){
+		if(song.type === "tja"){
+			return true
+		}
+		return !!(song.chart && song.chart.name && song.chart.name.toLowerCase().endsWith(".tja"))
+	}
+
+	getSongTitle(song){
+		if(this.isTjaSong(song)){
+			var lang = this.getTjaTitleLanguage()
+			var localizedTitle = this.getTjaLocalizedValue(song.title_lang, lang)
+			if(localizedTitle){
+				return localizedTitle
+			}
+			return song.tja_title || song.title || ""
+		}
+		return this.getLocalTitle(song.title, song.title_lang)
+	}
+
+	getSongSubtitle(song, title){
+		if(this.isTjaSong(song)){
+			var lang = this.getTjaTitleLanguage()
+			if(this.getTjaLocalizedValue(song.title_lang, lang)){
+				return this.getTjaLocalizedValue(song.subtitle_lang, lang)
+			}
+			return song.tja_subtitle || song.subtitle || ""
+		}
+		return this.getLocalTitle(title === song.title ? song.subtitle : "", song.subtitle_lang)
+	}
+
+	updateSongSearchText(song){
+		var title = this.getSongTitle(song)
+		song.titlePrepared = this.prepareSearchText(title)
+		var subtitle = this.getSongSubtitle(song, title)
+		song.subtitlePrepared = this.prepareSearchText(subtitle)
+	}
+
+	applyTjaTitleMetadata(song, tja){
+		var changed = false
+		if(!song.title_lang){
+			song.title_lang = {}
+		}
+		if(!song.subtitle_lang){
+			song.subtitle_lang = {}
+		}
+		for(var diff in tja.metadata){
+			var meta = tja.metadata[diff]
+			if(meta.title && song.tja_title !== meta.title){
+				song.tja_title = meta.title
+				changed = true
+			}
+			if(meta.subtitle !== undefined){
+				var subtitle = this.normalizeTjaSubtitle(meta.subtitle)
+				if(song.tja_subtitle !== subtitle){
+					song.tja_subtitle = subtitle
+					changed = true
+				}
+			}
+			for(var i = 0; i < languageList.length; i++){
+				var lang = languageList[i]
+				var title = this.getTjaMetaValue(meta, "title", lang)
+				if(title && song.title_lang[lang] !== title){
+					song.title_lang[lang] = title
+					changed = true
+				}
+				var subtitleLang = this.getTjaMetaValue(meta, "subtitle", lang)
+				if(subtitleLang){
+					subtitleLang = this.normalizeTjaSubtitle(subtitleLang)
+					if(song.subtitle_lang[lang] !== subtitleLang){
+						song.subtitle_lang[lang] = subtitleLang
+						changed = true
+					}
+				}
+			}
+		}
+		if(Object.keys(song.title_lang).length === 0){
+			delete song.title_lang
+		}
+		if(Object.keys(song.subtitle_lang).length === 0){
+			delete song.subtitle_lang
+		}
+		return changed
+	}
+
+	getTjaMetaValue(meta, field, lang){
+		var aliases = this.getTjaLanguageAliases(lang)
+		for(var i = 0; i < aliases.length; i++){
+			var value = meta[field + aliases[i]]
+			if(value){
+				return value
+			}
+		}
+		return ""
+	}
+
+	loadTjaTitleMetadata(selectedSong){
+		var currentSong = this.songs[selectedSong]
+		if(!currentSong || !this.isTjaSong(currentSong) || currentSong.tjaTitleLoaded || currentSong.tjaTitleLoading || currentSong.tjaTitleFailed){
+			return
+		}
+		if(currentSong.unloaded || !currentSong.chart || !currentSong.chart.read){
+			return
+		}
+		var assetIndex = assets.songs.findIndex(song => song.id === currentSong.id)
+		var assetSong = assetIndex !== -1 ? assets.songs[assetIndex] : currentSong
+		if(assetSong.tjaTitleLoaded || assetSong.tjaTitleLoading || assetSong.tjaTitleFailed){
+			return
+		}
+		assetSong.tjaTitleLoading = true
+		currentSong.tjaTitleLoading = true
+		var file = currentSong.chart
+		file.read("sjis").then(dataRaw => {
+			var data = dataRaw ? dataRaw.replace(/\0/g, "").split("\n") : []
+			var tja = new ParseTja(data, "oni", 0, 0, true)
+			if(file instanceof RemoteFile){
+				assetSong.chart = new CachedFile(dataRaw, file)
+				currentSong.chart = assetSong.chart
+			}
+			var changed = this.applyTjaTitleMetadata(assetSong, tja)
+			if(assetSong !== currentSong){
+				changed = this.applyTjaTitleMetadata(currentSong, tja) || changed
+			}
+			assetSong.tjaTitleLoaded = true
+			currentSong.tjaTitleLoaded = true
+			if(assetIndex !== -1){
+				this.updateSongSearchText(assetSong)
+				assets.songs[assetIndex] = assetSong
+			}
+			if(changed && this.songs[selectedSong] && this.songs[selectedSong].id === currentSong.id){
+				this.updateSongSearchText(currentSong)
+				this.songs[selectedSong] = this.addSong(currentSong)
+				this.currentSongCache.clear()
+				this.songTitleCache.clear()
+			}
+		}).catch(e => {
+			assetSong.tjaTitleFailed = true
+			currentSong.tjaTitleFailed = true
+			console.warn(e)
+		}).finally(() => {
+			delete assetSong.tjaTitleLoading
+			delete currentSong.tjaTitleLoading
+		})
+	}
+
+	prepareSearchText(text){
+		return text ? fuzzysort.prepare(text.normalize("NFD").replace(/[\u0300-\u036f]/g, "")) : null
+	}
+
+	defaultModifierState(){
+		return {
+			mode: 0,
+			speed: 1,
+			doron: false,
+			inverse: false,
+			shuffle: 0,
+			hardcore: false,
+			note: 0
+		}
+	}
+
+	getOptionRows(){
+		return [{
+			key: "mode",
+			label: this.localizedOptionText({ja: "演奏", en: "Mode", cn: "模式", tw: "模式", ko: "모드"}),
+			choices: [{
+				value: 0,
+				text: strings.none
+			}, {
+				value: 1,
+				text: this.localizedOptionText({ja: "オート", en: "Auto", cn: "自动", tw: "自動", ko: "자동"}),
+				icon: "yatai_modifier_mod_auto"
+			}, {
+				value: 2,
+				text: this.localizedOptionText({ja: "通信", en: "Netplay", cn: "联机", tw: "連線", ko: "온라인"})
+			}]
+		}, {
+			key: "speed",
+			label: this.localizedOptionText({ja: "はやさ", en: "Speed", cn: "速度", tw: "速度", ko: "속도"}),
+			choices: [{
+				value: 1,
+				text: strings.none
+			}, {
+				value: 2,
+				text: strings.songMods.x2,
+				icon: "yatai_modifier_mod_baisaku"
+			}, {
+				value: 3,
+				text: strings.songMods.x3,
+				icon: "yatai_modifier_mod_sanbai"
+			}, {
+				value: 4,
+				text: strings.songMods.x4,
+				icon: "yatai_modifier_mod_yonbai"
+			}]
+		}, {
+			key: "doron",
+			label: strings.songMods.doron,
+			choices: [{
+				value: false,
+				text: strings.none
+			}, {
+				value: true,
+				text: strings.songMods.doron,
+				icon: "yatai_modifier_mod_doron"
+			}]
+		}, {
+			key: "inverse",
+			label: strings.songMods.reverse,
+			choices: [{
+				value: false,
+				text: strings.none
+			}, {
+				value: true,
+				text: strings.songMods.reverse,
+				icon: "yatai_modifier_mod_abekobe"
+			}]
+		}, {
+			key: "shuffle",
+			label: this.localizedOptionText({ja: "ランダム", en: "Random", cn: "随机", tw: "隨機", ko: "랜덤"}),
+			choices: [{
+				value: 0,
+				text: strings.none
+			}, {
+				value: 0.25,
+				text: strings.songMods.half_shuffle,
+				icon: "yatai_modifier_mod_kimagure"
+			}, {
+				value: 0.5,
+				text: strings.songMods.shuffle,
+				icon: "yatai_modifier_mod_detarame"
+			}]
+		}, {
+			key: "hardcore",
+			label: this.localizedOptionText({ja: "ハード", en: "Hard", cn: "硬核", tw: "硬核", ko: "하드"}),
+			choices: [{
+				value: false,
+				text: strings.none
+			}, {
+				value: true,
+				text: strings.songMods.hardcore,
+				badge: "HC"
+			}]
+		}, {
+			key: "note",
+			label: this.localizedOptionText({ja: "音符", en: "Notes", cn: "音符", tw: "音符", ko: "음표"}),
+			choices: [{
+				value: 0,
+				text: strings.none
+			}, {
+				value: 1,
+				text: this.localizedOptionText({ja: "ドン", en: "Don", cn: "咚", tw: "咚", ko: "동"}),
+				badge: "ド"
+			}, {
+				value: 2,
+				text: this.localizedOptionText({ja: "カッ", en: "Kat", cn: "咔", tw: "咔", ko: "캇"}),
+				badge: "カ"
+			}]
+		}]
+	}
+
+	legacyOptionsToModifiers(value){
+		var modifiers = this.defaultModifierState()
+		if(value === 1){
+			modifiers.mode = 1
+		}else if(value === 2){
+			modifiers.mode = 2
+		}else if(value > 2 && value < 6){
+			modifiers.speed = value - 1
+		}else if(value === 6){
+			modifiers.doron = true
+		}else if(value === 7){
+			modifiers.inverse = true
+		}else if(value === 8){
+			modifiers.shuffle = 0.25
+		}else if(value === 9){
+			modifiers.shuffle = 0.5
+		}else if(value === 10){
+			modifiers.hardcore = true
+		}else if(value === 11){
+			modifiers.note = 1
+		}else if(value === 12){
+			modifiers.note = 2
+		}
+		return modifiers
+	}
+
+	legacyOptionFromModifiers(modifiers){
+		var selected = []
+		if(modifiers.mode === 1){
+			selected.push(1)
+		}else if(modifiers.mode === 2){
+			selected.push(2)
+		}
+		if(modifiers.speed > 1){
+			selected.push(modifiers.speed + 1)
+		}
+		if(modifiers.doron){
+			selected.push(6)
+		}
+		if(modifiers.inverse){
+			selected.push(7)
+		}
+		if(modifiers.shuffle === 0.25){
+			selected.push(8)
+		}else if(modifiers.shuffle === 0.5){
+			selected.push(9)
+		}
+		if(modifiers.hardcore){
+			selected.push(10)
+		}
+		if(modifiers.note === 1){
+			selected.push(11)
+		}else if(modifiers.note === 2){
+			selected.push(12)
+		}
+		return selected.length === 1 ? selected[0] : 0
+	}
+
+	syncLegacyOptions(){
+		this.state.options = this.legacyOptionFromModifiers(this.state.modifiers)
+	}
+
+	isNetplayOptionAvailable(){
+		return p2.session || p2.socket && p2.socket.readyState === 1 && !assets.customSongs
+	}
+
+	optionChoiceEnabled(row, choice){
+		return !(row.key === "mode" && choice.value === 2 && !this.isNetplayOptionAvailable())
+	}
+
+	getOptionChoiceIndex(row){
+		var value = this.state.modifiers[row.key]
+		for(var i = 0; i < row.choices.length; i++){
+			if(row.choices[i].value === value && this.optionChoiceEnabled(row, row.choices[i])){
+				return i
+			}
+		}
+		return 0
+	}
+
+	getCurrentOptionChoice(row){
+		return row.choices[this.getOptionChoiceIndex(row)]
+	}
+
+	setOptionChoiceIndex(rowIndex, choiceIndex){
+		var row = this.optionRows[rowIndex]
+		var choice = row.choices[choiceIndex]
+		if(choice && this.optionChoiceEnabled(row, choice)){
+			this.state.modifiers[row.key] = choice.value
+			this.syncLegacyOptions()
+			return true
+		}
+		return false
+	}
+
+	moveOptionMenuRow(moveBy){
+		this.state.optionMenuRow = this.mod(this.optionRows.length, this.state.optionMenuRow + moveBy)
+		this.playSound("se_ka", 0, p2.session ? p2.player : false)
+	}
+
+	moveOptionMenuValue(moveBy){
+		var rowIndex = this.state.optionMenuRow
+		var row = this.optionRows[rowIndex]
+		var index = this.getOptionChoiceIndex(row)
+		for(var i = 0; i < row.choices.length; i++){
+			index = this.mod(row.choices.length, index + moveBy)
+			if(this.setOptionChoiceIndex(rowIndex, index)){
+				this.playSound("se_ka", 0, p2.session ? p2.player : false)
+				return
+			}
+		}
+	}
+
+	advanceOptionMenu(){
+		if(this.state.optionMenuRow < this.optionRows.length - 1){
+			this.state.optionMenuRow++
+			this.playSound("se_don", 0, p2.session ? p2.player : false)
+		}else{
+			this.syncLegacyOptions()
+			this.closeOptionsMenu(true)
+		}
+	}
+
+	openOptionsMenu(){
+		this.selectedDiff = 1
+		if(!this.state.optionMenuOpen){
+			this.state.optionMenuRow = 0
+			this.state.optionMenuOpen = true
+			this.state.optionMenuHoverRow = null
+			this.playSound("se_ka", 0, p2.session ? p2.player : false)
+		}
+	}
+
+	closeOptionsMenu(sound){
+		if(this.state.optionMenuOpen){
+			this.state.optionMenuOpen = false
+			this.state.optionMenuHoverRow = null
+			if(sound){
+				this.playSound("se_don", 0, p2.session ? p2.player : false)
+			}
+		}
+	}
+
+	getSelectedModifiers(){
+		var source = this.state.modifiers || this.legacyOptionsToModifiers(this.state.options)
+		var modifiers = this.defaultModifierState()
+		for(var key in modifiers){
+			if(key in source){
+				modifiers[key] = source[key]
+			}
+		}
+		if(modifiers.mode === 2 && !this.isNetplayOptionAvailable()){
+			modifiers.mode = 0
+		}
+		return modifiers
+	}
+
+	getActiveModifierLabels(){
+		var modifiers = this.getSelectedModifiers()
+		var labels = []
+		for(var i = 0; i < this.optionRows.length; i++){
+			var row = this.optionRows[i]
+			var value = modifiers[row.key]
+			for(var j = 0; j < row.choices.length; j++){
+				var choice = row.choices[j]
+				if(choice.value === value && j !== 0){
+					labels.push(choice.text)
+					break
+				}
+			}
+		}
+		return labels
+	}
+
+	getOptionsSummary(){
+		var labels = this.getActiveModifierLabels()
+		if(labels.length === 0){
+			return strings.songOptions
+		}else if(labels.length === 1){
+			return labels[0]
+		}
+		return this.localizedOptionText({ja: "設定中", en: "Set", cn: "已设置", tw: "已設定", ko: "설정됨"})
+	}
+
+	modifiersDisableScore(modifiers){
+		modifiers = modifiers || this.getSelectedModifiers()
+		return modifiers.mode === 1 || modifiers.note !== 0
+	}
+
+	getOptionMenuLayout(){
+		var scale = 0.8
+		var rowH = 56 * scale
+		var rowStart = 88 * scale
+		var rowCount = this.optionRows.length
+		var bottomH = 128 * scale
+		return {
+			x: 205,
+			y: 112,
+			w: 464 * scale,
+			h: rowStart + rowH * rowCount + bottomH,
+			scale: scale,
+			rowX: 205 + 32 * scale,
+			rowStart: 112 + rowStart,
+			rowW: 400 * scale,
+			rowH: rowH,
+			bottomY: 112 + rowStart + rowH * rowCount
+		}
+	}
+
+	getOptionMenuHitLayout(layout){
+		var ratio = this.ratio || 1
+		var winW = this.winW || 1280 * ratio
+		var winH = this.winH || 720 * ratio
+		var frameLeft = winW / ratio / 2 - 1280 / 2
+		var frameTop = winH / ratio / 2 - 720 / 2
+		return Object.assign({}, layout, {
+			x: layout.x - frameLeft,
+			y: layout.y - frameTop,
+			rowX: layout.rowX - frameLeft,
+			rowStart: layout.rowStart - frameTop,
+			bottomY: layout.bottomY - frameTop
+		})
+	}
+
+	getOptionMenuArrowRects(layout, rowY){
+		var scale = layout.scale
+		var size = 22 * scale
+		var y = rowY + 16 * scale
+		return {
+			left: {
+				x: layout.rowX + 204 * scale,
+				y: y,
+				w: size,
+				h: size
+			},
+			right: {
+				x: layout.rowX + 354 * scale,
+				y: y,
+				w: size,
+				h: size
+			}
+		}
+	}
+
+	pointInRect(x, y, rect, padding){
+		padding = padding || 0
+		return x >= rect.x - padding && x <= rect.x + rect.w + padding && y >= rect.y - padding && y <= rect.y + rect.h + padding
+	}
+
+	optionMenuHit(x, y){
+		if(!this.state.optionMenuOpen){
+			return null
+		}
+		var layout = this.getOptionMenuHitLayout(this.getOptionMenuLayout())
+		if(x < layout.x || x > layout.x + layout.w || y < layout.y || y > layout.y + layout.h){
+			return null
+		}
+		for(var i = 0; i < this.optionRows.length; i++){
+			var rowY = layout.rowStart + i * layout.rowH
+			if(x >= layout.rowX && x <= layout.rowX + layout.rowW && y >= rowY && y <= rowY + layout.rowH){
+				var row = this.optionRows[i]
+				var direction = 0
+				if(row.choices.length > 1){
+					var arrows = this.getOptionMenuArrowRects(layout, rowY)
+					var padding = 8 * layout.scale
+					if(this.pointInRect(x, y, arrows.left, padding)){
+						direction = -1
+					}else if(this.pointInRect(x, y, arrows.right, padding)){
+						direction = 1
+					}
+				}
+				return {
+					row: i,
+					direction: direction
+				}
+			}
+		}
+		return {
+			row: null,
+			direction: 0
+		}
+	}
+
+	handleOptionMenuMouse(x, y){
+		var hit = this.optionMenuHit(x, y)
+		if(!hit){
+			return false
+		}
+		if(hit.row !== null){
+			this.state.optionMenuRow = hit.row
+			if(hit.direction){
+				this.moveOptionMenuValue(hit.direction)
+			}else{
+				this.playSound("se_ka", 0, p2.session ? p2.player : false)
+			}
+		}
+		return true
+	}
+
+	drawOptionMenuArrow(ctx, img, x, y, w, h, flip){
+		ctx.save()
+		if(flip){
+			ctx.translate(x + w, y)
+			ctx.scale(-1, 1)
+			ctx.drawImage(img, 0, 0, w, h)
+		}else{
+			ctx.drawImage(img, x, y, w, h)
+		}
+		ctx.restore()
+	}
+
+	drawOptionMenuIcon(ctx, choice, x, y, size){
+		if(choice.icon && assets.image[choice.icon]){
+			var img = assets.image[choice.icon]
+			var iconSize = choice.icon === "yatai_modifier_mod_auto" ? size * 0.82 : size
+			ctx.drawImage(img, x + (size - iconSize) / 2, y + (size - iconSize) / 2, iconSize, iconSize)
+		}else if(choice.badge && assets.image["yatai_modifier_mod_box"]){
+			ctx.drawImage(assets.image["yatai_modifier_mod_box"], x, y, size, size)
+			this.draw.layeredText({
+				ctx: ctx,
+				text: choice.badge,
+				fontSize: choice.badge.length > 1 ? size * 0.42 : size * 0.62,
+				fontFamily: this.font,
+				x: x + size / 2,
+				y: y + size / 2,
+				width: size,
+				align: "center",
+				baseline: "middle"
+			}, [
+				{outline: "#000", letterBorder: 5},
+				{fill: "#fff"}
+			])
+		}
+	}
+
+	drawOptionsMenu(ctx){
+		var top = assets.image["yatai_modifier_top"]
+		var bg = assets.image["yatai_modifier_background"]
+		var bottom = assets.image["yatai_modifier_bottom"]
+		var rowBg = assets.image["yatai_modifier_mod_bg"]
+		var rowHighlight = assets.image["yatai_modifier_mod_bg_highlight"]
+		var arrow = assets.image["yatai_modifier_blue_arrow"]
+		if(!top || !bg || !bottom || !rowBg || !rowHighlight || !arrow){
+			return
+		}
+		
+		var layout = this.getOptionMenuLayout()
+		var scale = layout.scale
+		var rowCount = this.optionRows.length
+		var topH = 96 * scale
+		var bottomH = 128 * scale
+		var middleY = layout.y + topH
+		var middleH = layout.bottomY - middleY + 8 * scale
+		
+		ctx.save()
+		ctx.shadowColor = "rgba(0, 0, 0, 0.35)"
+		ctx.shadowBlur = 12
+		ctx.shadowOffsetX = 4
+		ctx.shadowOffsetY = 4
+		ctx.drawImage(top, layout.x, layout.y, layout.w, topH)
+		ctx.drawImage(bg, layout.x, middleY, layout.w, middleH)
+		ctx.drawImage(bottom, layout.x, layout.bottomY, layout.w, bottomH)
+		ctx.shadowColor = "transparent"
+		
+		for(var i = 0; i < rowCount; i++){
+			var row = this.optionRows[i]
+			var selected = i === this.state.optionMenuRow
+			var hovered = i === this.state.optionMenuHoverRow
+			var rowY = layout.rowStart + i * layout.rowH
+			var rowImg = selected || hovered ? rowHighlight : rowBg
+			var choice = this.getCurrentOptionChoice(row)
+			var iconSize = 40 * scale
+			var iconX = layout.rowX + 10 * scale
+			var iconY = rowY + 8 * scale
+			var hasIcon = choice.icon || choice.badge
+			
+			ctx.drawImage(rowImg, layout.rowX, rowY, layout.rowW, layout.rowH)
+			if(selected){
+				this.drawOptionMenuArrow(ctx, arrow, layout.rowX - 21 * scale, rowY + 16 * scale, 22 * scale, 22 * scale, true)
+			}
+			this.drawOptionMenuIcon(ctx, choice, iconX, iconY, iconSize)
+			
+			this.draw.layeredText({
+				ctx: ctx,
+				text: row.label,
+				fontSize: 23 * scale,
+				fontFamily: this.font,
+				x: layout.rowX + (hasIcon ? 62 : 20) * scale,
+				y: rowY + 28 * scale,
+				width: (hasIcon ? 118 : 160) * scale,
+				align: "left",
+				baseline: "middle"
+			}, [
+				{outline: "#fff", letterBorder: 5 * scale},
+				{fill: "#273a13"}
+			])
+			
+			if(selected && row.choices.length > 1){
+				var arrows = this.getOptionMenuArrowRects(layout, rowY)
+				this.drawOptionMenuArrow(ctx, arrow, arrows.left.x, arrows.left.y, arrows.left.w, arrows.left.h)
+				this.drawOptionMenuArrow(ctx, arrow, arrows.right.x, arrows.right.y, arrows.right.w, arrows.right.h, true)
+			}
+			
+			this.draw.layeredText({
+				ctx: ctx,
+				text: choice.text,
+				fontSize: 22 * scale,
+				fontFamily: this.font,
+				x: layout.rowX + 290 * scale,
+				y: rowY + 28 * scale,
+				width: 140 * scale,
+				align: "center",
+				baseline: "middle"
+			}, [
+				{outline: "#fff", letterBorder: 5 * scale},
+				{fill: "#273a13"}
+			])
+		}
+		if(this.modifiersDisableScore()){
+			var warningY = layout.bottomY + 34 * scale
+			this.draw.layeredText({
+				ctx: ctx,
+				text: strings.scoreNotSavedWarning,
+				fontSize: 20 * scale,
+				fontFamily: this.font,
+				x: layout.x + layout.w / 2,
+				y: warningY,
+				width: layout.w - 36 * scale,
+				align: "center",
+				baseline: "middle"
+			}, [
+				{outline: "#fff", letterBorder: 5 * scale},
+				{fill: "#d12f24"}
+			])
+		}
+		ctx.restore()
 	}
 
 	keyPress(pressed, name, event, repeat){
@@ -522,11 +1264,29 @@ class SongSelect{
 			if(event && event.keyCode && event.keyCode === 70 && ctrl){
 				this.displaySearch()
 				if(event){ event.preventDefault() }
+			}else if(this.state.optionMenuOpen){
+				if(name === "confirm"){
+					this.advanceOptionMenu()
+				}else if(name === "back" || name === "session"){
+					this.closeOptionsMenu()
+					this.playSound("se_cancel", 0, p2.session ? p2.player : false)
+				}else if(name === "up"){
+					this.moveOptionMenuRow(-1)
+				}else if(name === "down"){
+					this.moveOptionMenuRow(1)
+				}else if(name === "left"){
+					this.moveOptionMenuValue(-1)
+				}else if(name === "right"){
+					this.moveOptionMenuValue(1)
+				}else if(name === "mute" || name === "ctrlGamepad"){
+					this.endPreview(true)
+					this.playBgm(false)
+				}
 			}else if(name === "confirm"){
 				if(this.selectedDiff === 0){
 					this.toSongSelect()
 				}else if(this.selectedDiff === 1){
-					this.toOptions(1)
+					this.openOptionsMenu()
 				}else if(this.selectedDiff === 2){
 					this.toSound(1)
 				}else{
@@ -539,7 +1299,7 @@ class SongSelect{
 			}else if(name === "right"){
 				this.moveToDiff(1)
 			}else if(this.selectedDiff === 1 && (name === "up" || name === "down")){
-				this.toOptions(name === "up" ? -1 : 1)
+				this.openOptionsMenu()
 			}else if(name === "mute" || name === "ctrlGamepad"){
 				this.endPreview(true)
 				this.playBgm(false)
@@ -566,15 +1326,13 @@ class SongSelect{
 			if(event.which !== 1){
 				return
 			}
-			var mouse = this.mouseOffset(event.offsetX, event.offsetY)
+			var mouse = this.canvasMouseOffset(event.clientX, event.clientY)
 			var shift = event.shiftKey
 			var ctrl = event.ctrlKey
 			var touch = false
 		}else{
 			event.preventDefault()
-			var x = event.touches[0].pageX - this.canvas.offsetLeft
-			var y = event.touches[0].pageY - this.canvas.offsetTop
-			var mouse = this.mouseOffset(x, y)
+			var mouse = this.canvasMouseOffset(event.touches[0].clientX, event.touches[0].clientY)
 			var shift = false
 			var ctrl = false
 			var touch = true
@@ -603,6 +1361,17 @@ class SongSelect{
 				}
 			}
 		}else if(this.state.screen === "difficulty"){
+			if(this.state.optionMenuOpen){
+				if(this.handleOptionMenuMouse(mouse.x, mouse.y)){
+					return
+				}else if(mouse.x < 183 || mouse.x > 1095 || mouse.y < 54 || mouse.y > 554){
+					this.toSongSelect()
+				}else{
+					this.closeOptionsMenu()
+					this.playSound("se_cancel", 0, p2.session ? p2.player : false)
+				}
+				return
+			}
 			var moveBy = this.diffSelMouse(mouse.x, mouse.y)
 			if(mouse.x < 183 || mouse.x > 1095 || mouse.y < 54 || mouse.y > 554){
 				this.toSongSelect()
@@ -610,7 +1379,7 @@ class SongSelect{
 				this.selectedDiff = 0
 				this.toSongSelect()
 			}else if(moveBy === 1){
-				this.toOptions(1)
+				this.openOptionsMenu()
 			}else if(moveBy === 2){
 				this.toSound(1)
 			}else if(moveBy === "maker"){
@@ -641,7 +1410,7 @@ class SongSelect{
 		}
 	}
 	mouseMove(event){
-		var mouse = this.mouseOffset(event.offsetX, event.offsetY)
+		var mouse = this.canvasMouseOffset(event.clientX, event.clientY)
 		var moveTo = null
 		if(this.state.showWarning){
 			if(408 < mouse.x && mouse.x < 872 && 470 < mouse.y && mouse.y < 550){
@@ -664,6 +1433,12 @@ class SongSelect{
 			}
 			this.state.moveHover = moveTo
 		}else if(this.state.screen === "difficulty"){
+			if(this.state.optionMenuOpen){
+				var hit = this.optionMenuHit(mouse.x, mouse.y)
+				this.state.optionMenuHoverRow = hit && hit.row !== null ? hit.row : null
+				this.pointer(!!hit)
+				return
+			}
 			var moveTo = this.diffSelMouse(mouse.x, mouse.y)
 			if(moveTo === null && this.state.moveHover === this.selectedDiff){
 				this.state.mouseMoveMS = this.getMS() - 1000
@@ -677,6 +1452,10 @@ class SongSelect{
 			x: (offsetX * this.pixelRatio - this.winW / 2) / this.ratio + 1280 / 2,
 			y: (offsetY * this.pixelRatio - this.winH / 2) / this.ratio + 720 / 2
 		}
+	}
+	canvasMouseOffset(clientX, clientY){
+		var rect = this.canvas.getBoundingClientRect()
+		return this.mouseOffset(clientX - rect.left, clientY - rect.top)
 	}
 	pointer(enabled){
 		if(!this.canvas){
@@ -847,6 +1626,8 @@ class SongSelect{
 				this.state.screenMS = this.getMS()
 				this.state.locked = true
 				this.state.moveHover = null
+				this.state.optionMenuOpen = false
+				this.state.optionMenuHoverRow = null
 				this.state.ura = 0
 				if(this.selectedDiff === this.diffOptions.length + 4){
 					this.selectedDiff = this.diffOptions.length + 3
@@ -903,6 +1684,8 @@ class SongSelect{
 			this.state.screenMS = this.getMS()
 			this.state.locked = true
 			this.state.moveHover = null
+			this.state.optionMenuOpen = false
+			this.state.optionMenuHoverRow = null
 			
 			assets.sounds["v_diffsel"].stop()
 			this.playSound("se_cancel", 0, fromP2 ? fromP2.player : false)
@@ -911,6 +1694,7 @@ class SongSelect{
 		pageEvents.send("song-select-back")
 	}
 	toLoadSong(difficulty, shift, ctrl, touch){
+		var selectedModifiers = this.getSelectedModifiers()
 		this.clean()
 		var selectedSong = this.songs[this.selectedSong]
 		assets.sounds["v_diffsel"].stop()
@@ -933,6 +1717,7 @@ class SongSelect{
 		var multiplayer = false
 		var mods = {
 			speed: 1,
+			inverse: false,
 			shuffle: 0,
 			doron: false,
 			hardcore: false,
@@ -941,9 +1726,9 @@ class SongSelect{
 		}
 		var soundEffec = this.state.sound + 1
 		localStorage.setItem("vOneLocalStorage", soundEffec);
-		if(p2.session || this.state.options === 2){
+		if(p2.session || selectedModifiers.mode === 2){
 			multiplayer = true
-		}else if(this.state.options === 1){
+		}else if(selectedModifiers.mode === 1){
 			autoplay = true
 		}else if(shift){
 			autoplay = shift
@@ -951,23 +1736,13 @@ class SongSelect{
 			multiplayer = ctrl
 		}
 		
-		if (this.state.options > 2 && this.state.options < 6) {
-			mods.speed = this.state.options - 1;
-		} else if (this.state.options === 7) { 
-			mods.shuffle = 1;
-		} else if (this.state.options === 8) { 
-			mods.shuffle = 0.25;
-		} else if (this.state.options === 9) { 
-			mods.shuffle = 0.5;
-		} else if (this.state.options === 6) { 
-			mods.doron = true;
-		} else if (this.state.options === 10) { 
-			mods.hardcore = true;
-		} else if (this.state.options === 11) { 
-			mods.allDon = true;
-		} else if (this.state.options === 12) { 
-			mods.allKat = true;
-		}
+		mods.speed = selectedModifiers.speed
+		mods.inverse = selectedModifiers.inverse
+		mods.shuffle = selectedModifiers.shuffle
+		mods.doron = selectedModifiers.doron
+		mods.hardcore = selectedModifiers.hardcore
+		mods.allDon = selectedModifiers.note === 1
+		mods.allKat = selectedModifiers.note === 2
 		
 		var diff = this.difficultyId[difficulty]
 		
@@ -988,18 +1763,12 @@ class SongSelect{
 		}, autoplay, multiplayer, touch)
 	}
 	toOptions(moveBy){
-			this.playSound("se_ka", 0, p2.session ? p2.player : false)
-			this.selectedDiff = 1
-			do{
-				this.state.options = this.mod(this.optionsList.length, this.state.options + moveBy)
-			}while((p2.socket.readyState !== 1 || assets.customSongs) && this.state.options === 2)
+			this.openOptionsMenu()
 	}
 	toSound(moveBy){
 			this.playSound("se_ka", 0, p2.session ? p2.player : false)
 			this.selectedDiff = 2
-			do{
-				this.state.sound = this.mod(this.soundList.length, this.state.sound + moveBy)
-			}while((!p2.socket || p2.socket.readyState !== 1 || assets.customSongs) && this.state.options === 2)
+			this.state.sound = this.mod(this.soundList.length, this.state.sound + moveBy)
 	}
 	toTitleScreen(){
 		if(!p2.session){
@@ -1673,8 +2442,8 @@ class SongSelect{
 						})
 						
 						var text = this.diffOptions[i].text
-						if(this.diffOptions[i].iconName === "options" && (this.selectedDiff === i || this.state.options !== 0)){
-							text = this.optionsList[this.state.options]
+						if(this.diffOptions[i].iconName === "options" && (this.selectedDiff === i || this.getActiveModifierLabels().length)){
+							text = this.getOptionsSummary()
 						}
 						
 						if(this.diffOptions[i].iconName === "sounds" && (this.selectedDiff === i || this.state.sound !== 0)){
@@ -2188,6 +2957,9 @@ class SongSelect{
 					this.selectable.style.display = ""
 					this.selectableText = currentSong.title
 				}
+				if(!songSel && this.state.optionMenuOpen){
+					this.drawOptionsMenu(ctx)
+				}
 			}
 		})
 		
@@ -2661,6 +3433,7 @@ class SongSelect{
 		var currentSong = this.songs[this.selectedSong]
 		var id = currentSong.id
 		var prvTime = currentSong.preview
+		this.loadTjaTitleMetadata(this.selectedSong)
 		this.endPreview()
 		
 		if("id" in currentSong){
@@ -2753,9 +3526,10 @@ class SongSelect{
 		var currentSong = this.songs[selectedSong]
 		var file = currentSong.chart
 		var importSongs = new ImportSongs(false, assets.otherFiles)
-		return file.read(currentSong.type === "tja" ? "sjis" : "").then(data => {
+		var isTja = this.isTjaSong(currentSong)
+		return file.read(isTja ? "sjis" : "").then(data => {
 			currentSong.chart = new CachedFile(data, file)
-			return importSongs[currentSong.type === "tja" ? "addTja" : "addOsu"]({
+			return importSongs[isTja ? "addTja" : "addOsu"]({
 				file: currentSong.chart,
 				index: currentSong.id
 			})
@@ -2781,8 +3555,8 @@ class SongSelect{
 		})
 	}
 	addSong(song){
-		var title = this.getLocalTitle(song.title, song.title_lang)
-		var subtitle = this.getLocalTitle(title === song.title ? song.subtitle : "", song.subtitle_lang)
+		var title = this.getSongTitle(song)
+		var subtitle = this.getSongSubtitle(song, title)
 		var skin = null
 		var categoryName = ""
 		var originalCategory = ""
@@ -2818,8 +3592,8 @@ class SongSelect{
 	
 	createSearchResult(result, resultWidth, fontSize){
 		var song = result.obj
-		var title = this.getLocalTitle(song.title, song.title_lang)
-		var subtitle = this.getLocalTitle(title === song.title ? song.subtitle : "", song.subtitle_lang)
+		var title = this.getSongTitle(song)
+		var subtitle = this.getSongSubtitle(song, title)
 
 		var id = "default"
 		if(song.category_id){

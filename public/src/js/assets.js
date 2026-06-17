@@ -1,6 +1,7 @@
 var assets = {
 	"js": [
 		"lib/md5.min.js",
+		"lib/fuzzysort.js",
 		"loadsong.js",
 		"parseosu.js",
 		"titlescreen.js",
@@ -36,7 +37,8 @@ var assets = {
 		"lyrics.js",
 		"customsongs.js",
 		"abstractfile.js",
-		"idb.js"
+		"idb.js",
+		"plugins.js"
 	],
 	"css": [
 		"main.css",
@@ -45,7 +47,8 @@ var assets = {
 		"game.css",
 		"debug.css",
 		"songbg.css",
-		"view.css"
+		"view.css",
+		"search.css"
 	],
 	"assetsCss": [
 		"img/img.css"
@@ -101,7 +104,7 @@ var assets = {
 		"results_mikoshi.png",
 		"results_tetsuohana.png",
 		"results_tetsuohana2.png",
-		"settings_gamepad.png"
+		"settings_gamepad.png",
 	],
 	"audioSfx": [
 		"se_pause.ogg",
@@ -219,7 +222,8 @@ var assets = {
 		"settings.html",
 		"account.html",
 		"login.html",
-		"customsongs.html"
+		"customsongs.html",
+		"search.html"
 	],
 	
 	"songs": [],

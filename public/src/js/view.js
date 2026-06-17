@@ -1,7 +1,10 @@
 ﻿class View{
-	constructor(controller){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(controller){
 		this.controller = controller
-		
+
 		this.canvas = document.getElementById("canvas")
 		this.ctx = this.canvas.getContext("2d")
 		var resolution = settings.getItem("resolution")
@@ -12,16 +15,16 @@
 		if(resolution === "lowest"){
 			this.canvas.style.imageRendering = "pixelated"
 		}
-		
+
 		this.gameDiv = document.getElementById("game")
 		this.songBg = document.getElementById("songbg")
 		this.songStage = document.getElementById("song-stage")
-		
+
 		this.rules = this.controller.game.rules
 		this.portraitClass = false
 		this.touchp2Class = false
 		this.darkDonBg = false
-		
+
 		this.pauseOptions = strings.pauseOptions
 		this.difficulty = {
 			"easy": 0,
@@ -30,7 +33,7 @@
 			"oni": 3,
 			"ura": 4
 		}
-		
+
 		this.currentScore = {
 			ms: -Infinity,
 			type: 0
@@ -49,6 +52,15 @@
 		this.gogoTime = 0
 		this.gogoTimeStarted = -Infinity
 		this.drumroll = []
+		this.drumrollCounter = {
+			active: false
+		}
+		this.balloonCounter = {
+			active: false
+		}
+		this.balloonCharacter = {
+			active: false
+		}
 		this.touchEvents = 0
 		if(this.controller.parsedSongData.branches){
 			this.branch = "normal"
@@ -77,58 +89,58 @@
 				}
 			}
 		}
-		
+
 		if(this.controller.calibrationMode){
 			this.beatInterval = 512
 		}else{
 			this.beatInterval = this.controller.parsedSongData.beatInfo.beatInterval
 		}
 		this.font = strings.font
-		
+
 		this.draw = new CanvasDraw(noSmoothing)
 		this.assets = new ViewAssets(this)
-		
+
 		this.titleCache = new CanvasCache(noSmoothing)
 		this.comboCache = new CanvasCache(noSmoothing)
 		this.pauseCache = new CanvasCache(noSmoothing)
 		this.branchCache = new CanvasCache(noSmoothing)
 		this.nameplateCache = new CanvasCache(noSmoothing)
-		
+
 		this.multiplayer = this.controller.multiplayer
 		if(this.multiplayer === 2){
 			this.player = p2.player === 2 ? 1 : 2
 		}else{
 			this.player = this.controller.multiplayer ? p2.player : 1
 		}
-		
+
 		this.touchEnabled = this.controller.touchEnabled
 		this.touch = -Infinity
 		this.touchAnimation = settings.getItem("touchAnimation")
-		
+
 		versionDiv.classList.add("version-hide")
 		loader.screen.parentNode.insertBefore(versionDiv, loader.screen)
-		
+
 		if(this.multiplayer !== 2){
-			
+
 			if(this.controller.touchEnabled){
 				this.touchDrumDiv = document.getElementById("touch-drum")
 				this.touchDrumImg = document.getElementById("touch-drum-img")
-				
+
 				this.setBgImage(this.touchDrumImg, assets.image["touch_drum"].src)
-				
+
 				if(this.controller.autoPlayEnabled){
 					this.touchDrumDiv.style.display = "none"
 				}
 				pageEvents.add(this.canvas, "touchstart", this.ontouch.bind(this))
-				
+
 				this.gameDiv.classList.add("touch-visible")
-				
+
 				this.touchFullBtn = document.getElementById("touch-full-btn")
 				pageEvents.add(this.touchFullBtn, "touchend", toggleFullscreen)
 				if(!fullScreenSupported){
 					this.touchFullBtn.style.display = "none"
 				}
-				
+
 				this.touchPauseBtn = document.getElementById("touch-pause-btn")
 				pageEvents.add(this.touchPauseBtn, "touchend", () => {
 					this.controller.togglePause()
@@ -149,26 +161,60 @@
 			this.setBackground()
 		}
 		this.setDonBg()
-		
+
 		this.startTime = this.controller.game.getAccurateTime()
 		this.lastMousemove = this.startTime
 		pageEvents.mouseAdd(this, this.onmousemove.bind(this))
-		
+
 		this.refresh()
+	}
+	getBadgeNames(showAuto){
+		var badges = this.controller.getModBadges ? this.controller.getModBadges() : []
+		badges = badges.slice()
+		if(showAuto && this.controller.autoPlayEnabled){
+			badges.unshift("badge_auto")
+		}
+		return badges.filter(name => assets.image[name])
+	}
+	drawModBadges(ctx, x, y, size, showAuto, options){
+		options = options || {}
+		var badges = this.getBadgeNames(showAuto)
+		var gap = Math.max(2, Math.round(size * 0.12))
+		if(options.maxRight && badges.length > 1){
+			var minX = options.minX || 0
+			var minSize = options.minSize || 18
+			var maxWidth = options.maxRight - minX
+			for(var fitSize = size; fitSize > minSize; fitSize--){
+				var fitGap = Math.max(2, Math.round(fitSize * 0.12))
+				var fitWidth = badges.length * fitSize + (badges.length - 1) * fitGap
+				if(fitWidth <= maxWidth){
+					break
+				}
+			}
+			size = fitSize
+			gap = Math.max(2, Math.round(size * 0.12))
+			var totalWidth = badges.length * size + (badges.length - 1) * gap
+			if(x + totalWidth > options.maxRight){
+				x = Math.max(minX, options.maxRight - totalWidth)
+			}
+		}
+		badges.forEach((name, i) => {
+			ctx.drawImage(assets.image[name], x + i * (size + gap), y, size, size)
+		})
 	}
 	refresh(){
 		var ctx = this.ctx
-		
+
 		var winW = innerWidth
 		var winH = lastHeight
-		
+
 		if(winW / 32 > winH / 9){
 			winW = winH / 9 * 32
 		}
-		
+
 		this.portrait = winW < winH
 		var touchMultiplayer = this.touchEnabled && this.multiplayer && !this.portrait
-		
+
 		this.pixelRatio = window.devicePixelRatio || 1
 		var resolution = settings.getItem("resolution")
 		if(resolution === "medium"){
@@ -188,16 +234,16 @@
 			var ratioY = winH / 720
 		}
 		var ratio = (ratioX < ratioY ? ratioX : ratioY)
-		
+
 		var resized = false
 		if(this.winW !== winW || this.winH !== winH){
 			this.winW = winW
 			this.winH = winH
 			this.ratio = ratio
-			
+
 			if(this.player !== 2){
-				this.canvas.width = winW
-				this.canvas.height = winH
+				this.canvas.width = Math.max(1, winW)
+				this.canvas.height = Math.max(1, winH)
 				ctx.scale(ratio, ratio)
 				this.canvas.style.width = (winW / this.pixelRatio) + "px"
 				this.canvas.style.height = (winH / this.pixelRatio) + "px"
@@ -228,7 +274,7 @@
 			this.ms = this.controller.game.getAccurateTime()
 		}
 		var ms = this.ms
-		
+
 		if(this.portrait){
 			var frameTop = winH / 2 - 1280 / 2
 			var frameLeft = winW / 2 - 720 / 2
@@ -251,20 +297,20 @@
 			this.gameDiv.classList.remove("touchp2")
 			this.setDonBgHeight()
 		}
-		
+
 		if(this.controller.lyrics){
 			this.controller.lyrics.update(ms)
 		}
-		
+
 		ctx.save()
 		ctx.translate(0, frameTop)
-		
+
 		this.drawGogoTime()
-		
-		if(!touchMultiplayer || this.player === 1 && frameTop >= 0){
+
+		if((!touchMultiplayer || this.player === 1 && frameTop >= 0) && !this.isBalloonCharacterVisible(ms)){
 			this.assets.drawAssets("background")
 		}
-		
+
 		if(this.player !== 2){
 			this.titleCache.get({
 				ctx: ctx,
@@ -275,7 +321,7 @@
 				id: "title"
 			}, ctx => {
 				var selectedSong = this.controller.selectedSong
-				
+
 				this.draw.layeredText({
 					ctx: ctx,
 					text: selectedSong.title,
@@ -289,7 +335,7 @@
 					{outline: "#000", letterBorder: 10},
 					{fill: "#fff"}
 				])
-				
+
 				if(selectedSong.category){
 					var _w = 142
 					var _h = 22
@@ -308,7 +354,7 @@
 						w: _w, h: _h,
 						radius: 11
 					})
-					ctx.fill()					
+					ctx.fill()
 
 					this.draw.layeredText({
 						ctx: ctx,
@@ -326,10 +372,10 @@
 				}
 			})
 		}
-		
+
 		var score = this.controller.getGlobalScore()
 		var gaugePercent = this.rules.gaugePercent(score.gauge)
-		
+
 		if(this.player === 2){
 			var scoreImg = "bg_score_p2"
 			var scoreFill = "#6bbec0"
@@ -337,16 +383,16 @@
 			var scoreImg = "bg_score_p1"
 			var scoreFill = "#fa4529"
 		}
-		
+
 		if(this.portrait){
 			// Portrait
-			
+
 			if(!this.portraitClass){
 				this.portraitClass = true
 				this.gameDiv.classList.add("portrait")
 				this.setDonBgHeight()
 			}
-			
+
 			this.slotPos = {
 				x: 66,
 				y: frameTop + 375,
@@ -354,7 +400,7 @@
 				paddingLeft: 0
 			}
 			this.scorePos = {x: 363, y: frameTop + (this.player === 2 ? 520 : 227)}
-			
+
 			var animPos = {
 				x1: this.slotPos.x + 13,
 				y1: this.slotPos.y + (this.player === 2 ? 27 : -27),
@@ -367,7 +413,7 @@
 				w: 111,
 				h: 130
 			}
-			
+
 			this.nameplateCache.get({
 				ctx: ctx,
 				x: 167,
@@ -392,7 +438,7 @@
 					blue: this.player === 2
 				})
 			})
-			
+
 			ctx.fillStyle = "#000"
 			ctx.fillRect(
 				0,
@@ -415,7 +461,7 @@
 				ctx.lineTo(0, 309)
 			}
 			ctx.fill()
-			
+
 			// Left side
 			ctx.fillStyle = scoreFill
 			var leftSide = (ctx, mul) => {
@@ -446,7 +492,7 @@
 				scale: 1.55
 			})
 			ctx.globalAlpha = 1
-			
+
 			// Score background
 			ctx.fillStyle = "#000"
 			ctx.beginPath()
@@ -462,7 +508,7 @@
 				this.draw.roundedCorner(ctx, 184, 265, 20, 3)
 			}
 			ctx.fill()
-			
+
 			// Difficulty
 			if(this.controller.selectedSong.difficulty){
 				ctx.drawImage(assets.image["difficulty"],
@@ -472,21 +518,10 @@
 					62, 53
 				)
 			}
-			
+
 			// Badges
-			let badge_name = this.controller.getModBadge();
-			if(this.controller.autoPlayEnabled && !this.multiplayer){
-				badge_name = "badge_auto";
-			}
-			if (badge_name) { 
-				this.ctx.drawImage(assets.image[badge_name],
-					183,
-					this.player === 2 ? 490 : 265,
-					23,
-					23
-				)
-			}
-			
+			this.drawModBadges(ctx, 183, this.player === 2 ? 490 : 265, 23, !this.multiplayer)
+
 			// Gauge
 			ctx.fillStyle = "#000"
 			ctx.beginPath()
@@ -521,22 +556,22 @@
 				scale: 0.75,
 				cleared: this.rules.clearReached(score.gauge)
 			})
-			
+
 			// Note bar
 			ctx.fillStyle = "#2c2a2c"
 			ctx.fillRect(0, 314, winW, 122)
 			ctx.fillStyle = "#847f84"
 			ctx.fillRect(0, 440, winW, 24)
-		
+
 		}else{
 			// Landscape
-			
+
 			if(this.portraitClass){
 				this.portraitClass = false
 				this.gameDiv.classList.remove("portrait")
 				this.setDonBgHeight()
 			}
-			
+
 			this.slotPos = {
 				x: 413,
 				y: frameTop + 257,
@@ -547,7 +582,7 @@
 				x: 155,
 				y: frameTop + (this.player === 2 ? 318 : 193)
 			}
-			
+
 			var animPos = {
 				x1: this.slotPos.x + 14,
 				y1: this.slotPos.y + (this.player === 2 ? 29 : -29),
@@ -555,7 +590,7 @@
 				y2: frameTop + (this.player === 2 ? 378 : 165)
 			}
 			var taikoPos = {x: 179, y: frameTop + 190, w: 138, h: 162}
-			
+
 			this.nameplateCache.get({
 				ctx: ctx,
 				x: touchMultiplayer ? 47 : 320,
@@ -579,7 +614,7 @@
 					blue: this.player === 2
 				})
 			})
-			
+
 			ctx.fillStyle = "#000"
 			ctx.fillRect(
 				0,
@@ -600,7 +635,7 @@
 				ctx.lineTo(winW, 192)
 			}
 			ctx.fill()
-			
+
 			// Gauge
 			this.draw.gauge({
 				ctx: ctx,
@@ -618,13 +653,13 @@
 				y: this.player === 2 ? 378 : 165,
 				cleared: this.rules.clearReached(score.gauge)
 			})
-			
+
 			// Note bar
 			ctx.fillStyle = "#2c2a2c"
 			ctx.fillRect(332, 192, winW - 332, 130)
 			ctx.fillStyle = "#847f84"
 			ctx.fillRect(332, 326, winW - 332, 26)
-			
+
 			// Left side
 			ctx.fillStyle = scoreFill
 			ctx.fillRect(0, 192, 328, 160)
@@ -641,7 +676,7 @@
 				scale: 1.55
 			})
 			ctx.globalAlpha = 1
-			
+
 			// Difficulty
 			if(this.controller.selectedSong.difficulty){
 				ctx.drawImage(assets.image["difficulty"],
@@ -663,18 +698,13 @@
 				ctx.fillText(text, 87, this.player === 2 ? 310 : 348)
 				ctx.miterLimit = 10
 			}
-			
+
 			// Badges
-			let badge_name = this.controller.getModBadge();
-			if(this.controller.autoPlayEnabled && !this.multiplayer){
-				badge_name = "badge_auto";
-			}
-			if(badge_name) {
-				this.ctx.drawImage(assets.image[badge_name],
-					125, 235, 34, 34
-				)
-			}
-			
+			this.drawModBadges(ctx, 125, 235, 34, !this.multiplayer, {
+				maxRight: taikoPos.x - 2,
+				minSize: 18
+			})
+
 			// Score background
 			ctx.fillStyle = "#000"
 			ctx.beginPath()
@@ -691,9 +721,9 @@
 			}
 			ctx.fill()
 		}
-		
+
 		ctx.restore()
-		
+
 		animPos.w = animPos.x2 - animPos.x1
 		animPos.h = animPos.y1 - animPos.y2
 		this.animateBezier = [{
@@ -713,7 +743,7 @@
 			x: animPos.x2,
 			y: animPos.y2
 		}]
-		
+
 		var touchTop = frameTop + (touchMultiplayer ? 135 : 0) + (this.player === 2 ? -165 : 0)
 		this.touchDrum = (() => {
 			var sw = 842
@@ -742,12 +772,12 @@
 			rx: this.touchDrum.w / 2 - this.touchDrum.h * 0.03,
 			ry: this.touchDrum.h * 1.07
 		}
-		
+
 		if(this.multiplayer !== 2){
 			this.mouseIdle()
 			this.drawTouch()
 		}
-		
+
 		// Score
 		ctx.save()
 		ctx.font = "30px TnT, Meiryo, sans-serif"
@@ -766,7 +796,7 @@
 			ctx.fillText(pointsText[i], x, 0)
 		}
 		ctx.restore()
-		
+
 		// Branch background
 		var keyTime = this.controller.getKeyTime()
 		var sound = keyTime["don"] > keyTime["ka"] ? "don" : "ka"
@@ -774,7 +804,7 @@
 		var mul = this.slotPos.size / 106
 		var barY = this.slotPos.y - 65 * mul
 		var barH = 130 * mul
-		
+
 		if(this.branchAnimate && ms <= this.branchAnimate.ms + 300){
 			var alpha = Math.max(0, (ms - this.branchAnimate.ms) / 300)
 			ctx.globalAlpha = 1 - alpha
@@ -787,7 +817,7 @@
 			ctx.fillRect(padding, barY, winW - padding, barH)
 			ctx.globalAlpha = 1
 		}
-		
+
 		// Current branch text
 		if(this.branch){
 			if(resized){
@@ -839,7 +869,7 @@
 			})
 			ctx.globalAlpha = 1
 		}
-		
+
 		// Go go time background
 		if(this.gogoTime || ms <= this.gogoTimeStarted + 100){
 			var grd = ctx.createLinearGradient(padding, 0, winW, 0)
@@ -857,7 +887,7 @@
 			}
 			ctx.fillRect(padding, barY, winW - padding, barH)
 		}
-		
+
 		// Bar pressed keys
 		if(keyTime[sound] > ms - 130){
 			var gradients = {
@@ -878,16 +908,16 @@
 			ctx.globalCompositeOperation = "source-over"
 		}
 		ctx.globalAlpha = 1
-		
+
 		// Taiko
 		ctx.drawImage(assets.image["taiko"],
 			0, 0, 138, 162,
 			taikoPos.x, taikoPos.y, taikoPos.w, taikoPos.h
 		)
-		
+
 		// Taiko pressed keys
 		var keys = ["ka_l", "ka_r", "don_l", "don_r"]
-		
+
 		for(var i = 0; i < keys.length; i++){
 			var keyMS = ms - keyTime[keys[i]]
 			if(keyMS < 130){
@@ -901,10 +931,10 @@
 			}
 		}
 		ctx.globalAlpha = 1
-		
+
 		// Combo
 		var scoreMS = ms - this.currentScore.ms
-		
+
 		var comboCount = this.controller.getCombo()
 		if(comboCount >= 10){
 			var comboText = comboCount.toString().split("")
@@ -919,10 +949,10 @@
 			var glyphH = 65
 			var letterSpacing = (comboText.length >= 4 ? 38 : 42) * mul
 			var orange = comboCount >= 100 ? "1" : "0"
-			
+
 			var w = glyphW * mul
 			var h = glyphH * mul * (1 + comboScale / 8)
-			
+
 			for(var i in comboText){
 				var textX = comboX + letterSpacing * (i - (comboText.length - 1) / 2)
 				this.comboCache.get({
@@ -934,7 +964,7 @@
 					id: orange + "combo" + comboText[i]
 				})
 			}
-			
+
 			var fontSize = 24 * mul
 			var comboTextY = taikoPos.y + taikoPos.h * 0.63
 			if(orange === "1"){
@@ -960,10 +990,10 @@
 			ctx.miterLimit = 10
 			ctx.fillText(strings.combo, comboX, comboTextY)
 		}
-		
+
 		// Slot
 		this.draw.slot(ctx, this.slotPos.x, this.slotPos.y, this.slotPos.size)
-		
+
 		// Measures
 		ctx.save()
 		ctx.beginPath()
@@ -971,10 +1001,10 @@
 		ctx.clip()
 		this.drawMeasures()
 		ctx.restore()
-		
+
 		// Go go time fire
 		this.assets.drawAssets("bar")
-		
+
 		// Hit notes shadow
 		if(scoreMS < 300 && this.currentScore.type){
 			var fadeOut = scoreMS > 120 && !this.touchEnabled
@@ -994,7 +1024,7 @@
 				ctx.globalAlpha = 1
 			}
 		}
-		
+
 		// Future notes
 		this.updateNoteFaces()
 		ctx.save()
@@ -1015,12 +1045,12 @@
 				})
 			}
 		}
-		
+
 		ctx.restore()
-		
+
 		// Hit notes explosion
 		this.assets.drawAssets("notes")
-		
+
 		// Good, OK, Bad
 		if(scoreMS < 300){
 			var mul = this.slotPos.size / 106
@@ -1047,21 +1077,26 @@
 				ctx.globalAlpha = 1
 			}
 		}
-		
+
 		// Animating notes
 		this.drawAnimatedCircles(this.controller.getCircles())
 		this.drawAnimatedCircles(this.drumroll)
-		
+		this.drawDrumrollCounter()
+
 		// Go-go time fireworks
 		if(!this.touchEnabled && !this.portrait && !this.multiplayer){
 			this.assets.drawAssets("foreground")
 		}
-		
+
+		this.drawBalloonCharacter(taikoPos)
+		this.drawBalloonBlowOverlay()
+		this.drawBalloonCounter()
+
 		// Pause screen
 		if(!this.multiplayer && this.controller.game.paused){
 			ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
 			ctx.fillRect(0, 0, winW, winH)
-			
+
 			ctx.save()
 			if(this.portrait){
 				ctx.translate(frameLeft - 242, frameTop + 308)
@@ -1070,7 +1105,7 @@
 			}else{
 				ctx.translate(frameLeft, frameTop)
 			}
-			
+
 			var state = this.controller.game.calibrationState
 			if(state && state in strings.calibration){
 				var boldTitle = strings.calibration[state].title
@@ -1124,7 +1159,7 @@
 					{fill: "#fff"}
 				])
 			}
-			
+
 			switch(state){
 				case "audioHelp":
 				case "videoHelp":
@@ -1164,7 +1199,7 @@
 								ctx.fill()
 								ctx.fillStyle = "#f7f7f7"
 								ctx.fillRect(2, 2, w - 4, h - 4)
-								
+
 								ctx.fillStyle = "#333"
 								ctx.textBaseline = "middle"
 								ctx.textAlign = "center"
@@ -1205,7 +1240,7 @@
 						verticalAlign: "middle",
 						substitute: substitute
 					})
-					
+
 					var _x = 640
 					var _w = 464
 					var _h = 80
@@ -1251,7 +1286,7 @@
 							letterSpacing: -1,
 							align: "center"
 						}, layers)
-						
+
 						var highlight = 0
 						if(this.state.moveHover === i){
 							highlight = 2
@@ -1294,7 +1329,7 @@
 					ctx.drawImage(assets.image["mimizu"],
 						313, 247, 136, 315
 					)
-					
+
 					var _y = 108
 					var _w = 80
 					var _h = 464
@@ -1349,7 +1384,7 @@
 							}
 							this.draw.verticalText(textConfig)
 						})
-						
+
 						var highlight = 0
 						if(this.state.moveHover === i){
 							highlight = 2
@@ -1372,7 +1407,7 @@
 					}
 					break
 			}
-			
+
 			ctx.restore()
 		}
 	}
@@ -1395,7 +1430,7 @@
 		var supportsBlend = "mixBlendMode" in this.songBg.style
 		var songLayers = [document.getElementById("layer1"), document.getElementById("layer2")]
 		var prefix = ""
-		
+
 		if(!selectedSong.songSkin.song){
 			var id = selectedSong.songBg
 			this.songBg.classList.add("songbg-" + id)
@@ -1408,7 +1443,7 @@
 			}
 			this.setLayers(songLayers, prefix + "bg_song_" + songSkinName + (notStatic ? "_" : ""), notStatic)
 		}
-		
+
 		if(!selectedSong.songSkin.stage){
 			this.songStage.classList.add("song-stage-" + selectedSong.songStage)
 			this.setBgImage(this.songStage, assets.image["bg_stage_" + selectedSong.songStage].src)
@@ -1423,7 +1458,7 @@
 		var donLayers = []
 		var filename = !selectedSong.songSkin.don && this.player === 2 ? "bg_don2_" : "bg_don_"
 		var prefix = ""
-		
+
 		this.donBg = document.createElement("div")
 		this.donBg.classList.add("donbg")
 		if(this.player === 2){
@@ -1486,7 +1521,7 @@
 	setBgImage(element, url){
 		element.style.backgroundImage = "url('" + url + "')"
 	}
-	
+
 	drawMeasures(){
 		var measures = this.controller.parsedSongData.measures
 		var ms = this.getMS()
@@ -1494,7 +1529,7 @@
 		var distanceForCircle = this.winW / this.ratio - this.slotPos.x
 		var measureY = this.slotPos.y - 65 * mul
 		var measureH = 130 * mul
-		
+
 		measures.forEach(measure => {
 			var timeForDistance = this.posToMs(distanceForCircle, measure.speed)
 			var startingTime = measure.ms - timeForDistance + this.controller.videoLatency
@@ -1520,6 +1555,7 @@
 	}
 	updateNoteFaces(){
 		var ms = this.getMS()
+		var lastNextBeat = this.nextBeat
 		while(ms >= this.nextBeat){
 			this.nextBeat += this.beatInterval
 			if(this.controller.getCombo() >= 50){
@@ -1534,25 +1570,28 @@
 					big: 3
 				}
 			}
+			if(this.nextBeat <= lastNextBeat){
+				break
+			}
 		}
 	}
 	drawCircles(circles){
 		var distanceForCircle = this.winW / this.ratio - this.slotPos.x
 		var ms = this.getMS()
-		
+
 		for(var i = circles.length; i--;){
 			var circle = circles[i]
 			var speed = circle.speed
-			
+
 			var timeForDistance = this.posToMs(distanceForCircle + this.slotPos.size / 2, speed)
 			var startingTime = circle.ms - timeForDistance + this.controller.videoLatency
 			var finishTime = circle.endTime + this.posToMs(this.slotPos.x - this.slotPos.paddingLeft + this.slotPos.size * 2, speed) + this.controller.videoLatency
-			
-			if(circle.isPlayed <= 0 || circle.score === 0){
-				if((!circle.branch || circle.branch.active) && ms >= startingTime && ms <= finishTime && circle.isPlayed !== -1){
-					this.drawCircle(circle, null, null, this.controller.mods && this.controller.mods.doron)
-				}
-			}else if(!circle.animating){
+
+				if(circle.isPlayed <= 0 || circle.score === 0){
+					if((!circle.branch || circle.branch.active) && ms >= startingTime && ms <= finishTime && circle.isPlayed !== -1 && (circle.type !== "balloon" || !circle.timesHit)){
+						this.drawCircle(circle, null, null, this.controller.mods && this.controller.mods.doron)
+					}
+				}else if(!circle.animating){
 				// Start animation to gauge
 				circle.animate(ms)
 			}
@@ -1576,37 +1615,92 @@
 	}
 	drawAnimatedCircles(circles) {
 		var ms = this.getMS()
-		
+
 		for(var i = 0; i < circles.length; i++){
 			var circle = circles[i]
-			
+
 			if(circle.animating){
-				
+
 				var animT = circle.animT
+				if(circle.fixedPos){
+					circle.fixedPos = false
+					circle.animT = ms
+					animT = ms
+				}
 				if(ms < animT + 490){
-					
-					if(circle.fixedPos){
-						circle.fixedPos = false
-						circle.animT = ms
-						animT = ms
+					var animPoint = this.draw.easeOut((ms - animT) / 490)
+					var bezierPoint = this.calcBezierPoint(animPoint, this.animateBezier)
+					if(circle.type === "balloon"){
+						this.drawBalloonRainbowTrail(animPoint)
+					}else{
+						this.drawHitFireworks(circle, ms - animT)
 					}
-					var animPoint = (ms - animT) / 490
-					var bezierPoint = this.calcBezierPoint(this.draw.easeOut(animPoint), this.animateBezier)
 					this.drawCircle(circle, {x: bezierPoint.x, y: bezierPoint.y})
-					
 				}else if(ms < animT + 810){
 					var pos = this.animateBezier[3]
-					this.drawCircle(circle, pos, (ms - animT - 490) / 160)
+					var fade = (ms - animT - 490) / 160
+					if(circle.type === "balloon"){
+						this.drawBalloonRainbowTrail(1, 1 - fade)
+					}else{
+						this.drawHitFireworks(circle, ms - animT)
+					}
+					this.drawCircle(circle, pos, fade)
 				}else{
 					circle.animationEnded = true
 				}
 			}
 		}
 	}
+	shouldDrawHitFireworks(circle){
+		return !circle.isRoll && (circle.type === "daiDon" || circle.type === "daiKa")
+	}
+	drawHitFireworks(circle, elapsed){
+		if(!this.shouldDrawHitFireworks(circle)){
+			return
+		}
+		var img = assets.image["tja_hit_fireworks_keyed"]
+		if(!img){
+			return
+		}
+		var frameSize = img.height
+		var frameCount = Math.max(1, Math.floor(img.width / frameSize))
+		var frameMS = 10
+		var duration = frameCount * frameMS
+		var interval = 32
+		var firstStart = 16
+		var travel = 490
+		var mul = this.slotPos.size / 106
+		var size = frameSize * mul
+		var ctx = this.ctx
+		var lastStart = Math.min(travel, elapsed)
+		ctx.save()
+		ctx.globalCompositeOperation = "lighter"
+		for(var burstStart = firstStart; burstStart <= lastStart; burstStart += interval){
+			var age = elapsed - burstStart
+			if(age < 0 || age >= duration){
+				continue
+			}
+			var progress = this.draw.easeOut(Math.min(1, burstStart / travel))
+			var pos = this.calcBezierPoint(progress, this.animateBezier)
+			var frame = Math.min(frameCount - 1, Math.floor(age / frameMS))
+			ctx.drawImage(
+				img,
+				frame * frameSize,
+				0,
+				frameSize,
+				frameSize,
+				pos.x - size / 2,
+				pos.y - size / 2,
+				size,
+				size
+			)
+		}
+		ctx.restore()
+	}
 	calcBezierPoint(t, data){
 		var at = 1 - t
 		data = data.slice()
-		
+
 		for(var i = 1; i < data.length; i++){
 			for(var k = 0; k < data.length - i; k++){
 				data[k] = {
@@ -1620,11 +1714,11 @@
 	drawCircle(circle, circlePos, fade, doron){
 		var ctx = this.ctx
 		var mul = this.slotPos.size / 106
-		
+
 		var bigCircleSize = 106 * mul / 2
 		var circleSize = 70 * mul / 2
 		var lyricsSize = 20 * mul
-		
+
 		var fill, size, faceID
 		var type = circle.type
 		var ms = this.getMS()
@@ -1635,7 +1729,7 @@
 		var played = circle.isPlayed
 		var drumroll = 0
 		var endX = 0
-		
+
 		if(!circlePos){
 			circlePos = {
 				x: this.slotPos.x + this.msToPos(circleMs - ms + this.controller.videoLatency, speed),
@@ -1705,7 +1799,7 @@
 				}
 				endX = this.msToPos(endTime - circleMs, speed)
 				drumroll = endX > 50 ? 2 : 1
-				
+
 				ctx.fillStyle = fill
 				ctx.strokeStyle = "#000"
 				ctx.lineWidth = 3
@@ -1753,22 +1847,22 @@
 			ctx.font = lyricsSize + "px Kozuka, Microsoft YaHei, sans-serif"
 			ctx.textBaseline = "middle"
 			ctx.textAlign = "center"
-			
+
 			if(drumroll === 2){
 				var longText = text.split("ー")
 				text = longText[0]
 				var text0Width = ctx.measureText(longText[0]).width
 				var text1Width = ctx.measureText(longText[1]).width
 			}
-			
+
 			ctx.fillStyle = "#fff"
 			ctx.strokeStyle = "#000"
 			ctx.lineWidth = 5
 			ctx.strokeText(text, textX, textY)
-			
+
 			if(drumroll === 2){
 				ctx.strokeText(longText[1], textX + endX, textY)
-				
+
 				ctx.lineWidth = 4
 				var x1 = textX + text0Width / 2
 				var x2 = textX + endX - text1Width / 2
@@ -1781,18 +1875,440 @@
 				ctx.stroke()
 				ctx.fill()
 			}
-			
+
 			ctx.strokeStyle = "#fff"
 			ctx.lineWidth = 0.5
-			
+
 			ctx.strokeText(text, textX, textY)
 			ctx.fillText(text, textX, textY)
-			
+
 			if(drumroll === 2){
 				ctx.strokeText(longText[1], textX + endX, textY)
 				ctx.fillText(longText[1], textX + endX, textY)
 			}
 		}
+	}
+	showBalloonCounter(circle, count, ms, popped){
+		if(!circle || circle.type !== "balloon"){
+			return
+		}
+		var state = this.balloonCounter
+		if(!state.active || state.circle !== circle){
+			state.active = true
+			state.circle = circle
+			state.count = 0
+			state.total = Math.max(1, circle.requiredHits || 1)
+			state.started = ms
+			state.hitMS = ms
+			state.popped = false
+			state.failed = false
+			state.popMS = Infinity
+			this.startBalloonCharacter(circle, "breaking", ms)
+		}
+		if(state.count !== count){
+			state.count = count
+			state.hitMS = ms
+			if(!state.popped){
+				this.startBalloonCharacter(circle, "breaking", ms)
+			}
+		}
+		if(popped && !state.popped){
+			state.popped = true
+			state.popMS = ms
+			this.startBalloonCharacter(circle, "broke", ms)
+		}
+		state.rollEndMS = circle.endTime + this.controller.audioLatency
+	}
+	getActiveBalloonCircle(ms){
+		var circles = this.controller.getCircles()
+		var latency = this.controller.audioLatency
+		for(var i = 0; i < circles.length; i++){
+			var circle = circles[i]
+			if(
+				circle.type === "balloon" &&
+				(!circle.branch || circle.branch.active) &&
+				ms >= circle.ms + latency &&
+				ms <= circle.endTime + latency
+			){
+				return circle
+			}
+		}
+		return null
+	}
+	getBalloonCounterState(ms){
+		var state = this.balloonCounter
+		if(!state.active){
+			return null
+		}
+		if(state.popped){
+			if(ms >= state.popMS + 166){
+				state.active = false
+				return null
+			}
+			return state
+		}
+		var activeCircle = this.getActiveBalloonCircle(ms)
+		if(activeCircle && activeCircle !== state.circle){
+			state.active = false
+			return null
+		}
+		if(!activeCircle && ms > state.rollEndMS){
+			if(state.count > 0 && !state.popped && !state.failed){
+				state.failed = true
+				this.startBalloonCharacter(state.circle, "miss", ms)
+			}
+			state.active = false
+			return null
+		}
+		return state
+	}
+	drawBalloonRainbowTrail(progress, alpha){
+		if(!this.animateBezier || progress <= 0.02){
+			return
+		}
+		var ctx = this.ctx
+		var mul = this.slotPos.size / 106
+		var colors = [
+			"#ff3329",
+			"#ff8f24",
+			"#ffea35",
+			"#38d75a",
+			"#34d5ff",
+			"#3970ff",
+			"#b24cff"
+		]
+		var clamped = Math.min(1, Math.max(0, progress))
+		var start = Math.max(0, clamped - 0.55)
+		var steps = Math.max(5, Math.ceil((clamped - start) * 24))
+		var stripe = 8 * mul
+		alpha = alpha == null ? 0.9 : Math.max(0, Math.min(1, alpha))
+
+		ctx.save()
+		ctx.globalAlpha *= alpha
+		ctx.globalCompositeOperation = "screen"
+		ctx.lineCap = "round"
+		ctx.lineJoin = "round"
+		for(var c = 0; c < colors.length; c++){
+			var offset = (c - (colors.length - 1) / 2) * stripe * 1.05
+			ctx.beginPath()
+			for(var i = 0; i <= steps; i++){
+				var t = start + (clamped - start) * (i / steps)
+				var point = this.calcBezierPoint(t, this.animateBezier)
+				if(i === 0){
+					ctx.moveTo(point.x, point.y + offset)
+				}else{
+					ctx.lineTo(point.x, point.y + offset)
+				}
+			}
+			ctx.strokeStyle = colors[c]
+			ctx.lineWidth = stripe
+			ctx.stroke()
+		}
+		ctx.restore()
+	}
+	getBalloonCharacterConfig(phase){
+		var configs = {
+			breaking: {
+				image: "tja_balloon_chara_breaking",
+				frames: 11,
+				cols: 11,
+				loop: true
+			},
+			broke: {
+				image: "tja_balloon_chara_broke",
+				frames: 31,
+				cols: 8,
+				loop: false,
+				duration: 500
+			},
+			miss: {
+				image: "tja_balloon_chara_miss",
+				frames: 24,
+				cols: 8,
+				loop: false,
+				duration: 500
+			}
+		}
+		return configs[phase]
+	}
+	startBalloonCharacter(circle, phase, ms){
+		var state = this.balloonCharacter
+		if(state.active && state.circle === circle && state.phase === phase && phase === "breaking"){
+			return
+		}
+		state.active = true
+		state.circle = circle
+		state.phase = phase
+		state.started = ms
+	}
+	isBalloonCharacterVisible(ms){
+		var state = this.balloonCharacter
+		if(!state.active){
+			return false
+		}
+		var config = this.getBalloonCharacterConfig(state.phase)
+		if(!config || !assets.image[config.image]){
+			return false
+		}
+		if(!config.loop && ms - state.started >= config.duration){
+			state.active = false
+			return false
+		}
+		return true
+	}
+	getBalloonCharacterPlacement(taikoPos){
+		var mul = this.slotPos.size / 106
+		var scale = (this.portrait ? 0.72 : 0.86) * mul
+		var mouthFrameX = 365
+		var mouthFrameY = 260
+		var mouthX = this.slotPos.x
+		var mouthY = this.slotPos.y
+		if(this.portrait){
+			mouthX = Math.max(this.slotPos.x + 105 * mul, 165 * mul)
+			mouthY = this.slotPos.y - 2 * mul
+		}
+		var x = mouthX - mouthFrameX * scale
+		var y = mouthY - mouthFrameY * scale
+		return {
+			x: x,
+			y: y,
+			scale: scale,
+			mouthX: mouthX,
+			mouthY: mouthY
+		}
+	}
+	drawBalloonCharacter(taikoPos){
+		var ms = this.getMS()
+		if(!this.isBalloonCharacterVisible(ms)){
+			return
+		}
+		var state = this.balloonCharacter
+		var config = this.getBalloonCharacterConfig(state.phase)
+		var sheet = assets.image[config.image]
+		var frameW = 648
+		var frameH = 345
+		var elapsed = Math.max(0, ms - state.started)
+		var frame = Math.floor(elapsed / 16)
+		if(config.loop){
+			frame = frame % config.frames
+		}else{
+			frame = Math.min(config.frames - 1, frame)
+		}
+		var col = frame % config.cols
+		var row = Math.floor(frame / config.cols)
+		var placement = this.getBalloonCharacterPlacement(taikoPos)
+		var scale = placement.scale
+		var x = placement.x
+		var y = placement.y
+		var alpha = config.loop ? 1 : Math.max(0, 1 - elapsed / config.duration)
+
+		this.ctx.save()
+		this.ctx.globalAlpha *= alpha
+		this.ctx.drawImage(
+			sheet,
+			col * frameW, row * frameH,
+			frameW, frameH,
+			x, y,
+			frameW * scale, frameH * scale
+		)
+		this.ctx.restore()
+	}
+	drawBalloonBlowOverlay(){
+		var ms = this.getMS()
+		var state = this.getBalloonCounterState(ms)
+		if(!state || !state.count || state.failed){
+			return
+		}
+		if(!this.isBalloonCharacterVisible(ms)){
+			return
+		}
+
+		var pop = assets.image["yatai_balloon_pop"]
+		if(!pop){
+			return
+		}
+		var mul = this.slotPos.size / 106
+		var scale = (this.portrait ? 0.8 : 1) * mul
+		var frame = state.popped ? 7 : Math.min(6, Math.floor((Math.max(1, state.count) - 1) * 6 / state.total))
+		var frameX = frame % 3 * 256
+		var frameY = Math.floor(frame / 3) * 240
+		var placement = this.getBalloonCharacterPlacement()
+		var anchorX = 27
+		var anchorY = 122
+		var mouthOffsetX = 26 * mul
+		var alpha = state.popped ? Math.max(0, 1 - (ms - state.popMS) / 166) : 1
+
+		this.ctx.save()
+		this.ctx.globalAlpha *= alpha
+		this.ctx.drawImage(
+			pop,
+			frameX, frameY,
+			256, 240,
+			placement.mouthX + mouthOffsetX - anchorX * scale,
+			placement.mouthY - anchorY * scale,
+			256 * scale,
+			240 * scale
+		)
+		this.ctx.restore()
+	}
+	drawBalloonCounter(){
+		var ms = this.getMS()
+		var state = this.getBalloonCounterState(ms)
+		if(!state || !state.count){
+			return
+		}
+		var bubble = assets.image["yatai_balloon_bubble"]
+		var digits = assets.image["yatai_balloon_counter_digits"]
+		if(!bubble || !digits){
+			return
+		}
+
+		var ctx = this.ctx
+		var mul = this.slotPos.size / 106
+		var scale = (this.portrait ? 0.68 : 0.86) * mul
+		var bubbleCenterX = this.portrait ? this.slotPos.x + 145 * mul : this.slotPos.x - 24 * mul
+		var bubbleCenterY = this.slotPos.y - (this.portrait ? 200 : 172) * mul
+		var alpha = 1
+		if(state.popped){
+			alpha = Math.max(0, 1 - (ms - state.popMS) / 166)
+		}
+		var stretch = Math.max(0, 12 * (1 - Math.min(1, (ms - state.hitMS) / 50))) * scale
+		var bubbleW = 176 * scale
+		var bubbleH = 160 * scale
+		var bubbleX = bubbleCenterX - bubbleW / 2
+		var bubbleY = bubbleCenterY - bubbleH / 2
+
+		ctx.save()
+		ctx.globalAlpha *= alpha
+		ctx.drawImage(bubble, bubbleX, bubbleY, bubbleW, bubbleH)
+
+		var text = Math.max(0, state.total - state.count).toString()
+		var digitW = 64 * scale
+		var digitH = 72 * scale
+		var margin = 52 * scale
+		var totalW = (text.length - 1) * margin + digitW
+		var digitY = bubbleY + 30 * scale - stretch
+		for(var i = 0; i < text.length; i++){
+			var digit = text.charCodeAt(i) - 48
+			if(digit < 0 || digit > 9){
+				continue
+			}
+			ctx.drawImage(
+				digits,
+				digit * 64, 0,
+				64, 72,
+				bubbleCenterX - totalW / 2 + i * margin,
+				digitY,
+				digitW,
+				digitH + stretch
+			)
+		}
+		ctx.restore()
+	}
+	showDrumrollCounter(circle, count, ms){
+		if(!circle || circle.type !== "drumroll" && circle.type !== "daiDrumroll"){
+			return
+		}
+		var state = this.drumrollCounter
+		if(!state.active || state.circle !== circle){
+			state.active = true
+			state.circle = circle
+			state.count = 0
+			state.started = ms
+			state.hitMS = ms
+		}
+		if(state.count !== count){
+			state.count = count
+			state.hitMS = ms
+		}
+		state.rollEndMS = circle.endTime + this.controller.audioLatency
+		state.hideMS = state.rollEndMS + 1000
+	}
+	getActiveDrumrollCircle(ms){
+		var circles = this.controller.getCircles()
+		var latency = this.controller.audioLatency
+		for(var i = 0; i < circles.length; i++){
+			var circle = circles[i]
+			if(
+				(circle.type === "drumroll" || circle.type === "daiDrumroll") &&
+				(!circle.branch || circle.branch.active) &&
+				ms >= circle.ms + latency &&
+				ms <= circle.endTime + latency
+			){
+				return circle
+			}
+		}
+		return null
+	}
+	getDrumrollCounterState(ms){
+		var state = this.drumrollCounter
+		if(!state.active){
+			return null
+		}
+		var activeCircle = this.getActiveDrumrollCircle(ms)
+		if(activeCircle && activeCircle !== state.circle){
+			state.active = false
+			return null
+		}
+		if(ms >= state.hideMS + 166){
+			state.active = false
+			return null
+		}
+		return state
+	}
+	drawDrumrollCounter(){
+		var ms = this.getMS()
+		var state = this.getDrumrollCounterState(ms)
+		if(!state || !state.count){
+			return
+		}
+		var bubble = assets.image["yatai_drumroll_counter_bubble"]
+		var digits = assets.image["yatai_drumroll_counter_digits"]
+		if(!bubble || !digits){
+			return
+		}
+
+		var ctx = this.ctx
+		var mul = this.slotPos.size / 106
+		var scale = (this.portrait ? 0.64 : 0.7) * 1.4 * mul
+		var centerX = this.portrait ? Math.max(220, this.slotPos.x + 150 * mul) : this.slotPos.x - 28 * mul
+		var centerY = this.slotPos.y - (this.portrait ? 170 : 165) * mul
+		var alpha = 1
+		if(ms > state.hideMS){
+			alpha = Math.max(0, 1 - (ms - state.hideMS) / 166)
+		}
+		var stretch = Math.max(0, 12 * (1 - Math.min(1, (ms - state.hitMS) / 50))) * scale
+		var bubbleW = 304 * scale
+		var bubbleH = 188 * scale
+		var bubbleX = centerX - bubbleW / 2
+		var bubbleY = centerY - bubbleH / 2
+
+		ctx.save()
+		ctx.globalAlpha *= alpha
+		ctx.drawImage(bubble, bubbleX, bubbleY, bubbleW, bubbleH)
+
+		var text = state.count.toString()
+		var digitW = 64 * scale
+		var digitH = 72 * scale
+		var margin = 52 * scale
+		var totalW = text.length * margin
+		var digitY = bubbleY + 50 * scale - stretch
+		for(var i = 0; i < text.length; i++){
+			var digit = text.charCodeAt(i) - 48
+			if(digit < 0 || digit > 9){
+				continue
+			}
+			ctx.drawImage(
+				digits,
+				digit * 64, 0,
+				64, 72,
+				centerX - totalW / 2 + i * margin,
+				digitY,
+				digitW,
+				digitH + stretch
+			)
+		}
+		ctx.restore()
 	}
 	fillComboCache(){
 		var fontSize = 58
@@ -1802,7 +2318,7 @@
 		var textX = 5
 		var textY = 5
 		var letterBorder = fontSize * 0.15
-		
+
 		this.comboCache.resize((glyphW + 1) * 20, glyphH + 1, this.ratio)
 		for(var orange = 0; orange < 2; orange++){
 			for(var i = 0; i < 10; i++){
@@ -1895,7 +2411,7 @@
 		if(circle.gogoTime || this.gogoTimeStarted !== -Infinity){
 			this.gogoTimeStarted = startMS
 		}
-		
+
 		if(this.gogoTime){
 			this.assets.fireworks.forEach(fireworksAsset => {
 				fireworksAsset.setAnimation("normal")
@@ -1918,7 +2434,7 @@
 	}
 	drawGogoTime(){
 		var ms = this.getMS()
-		
+
 		if(this.gogoTime){
 			var circles = this.controller.parsedSongData.circles
 			var lastCircle = circles[circles.length - 1]
@@ -1966,7 +2482,7 @@
 			this.currentScore.type = score
 			this.currentScore.bigNote = bigNote
 			this.currentScore.adlib = adlib
-			
+
 			if(score > 0){
 				var explosion = this.assets.explosion
 				explosion.type = (bigNote ? 0 : 2) + (score === 450 ? 0 : 1)
@@ -2002,7 +2518,7 @@
 		if(this.touchEnabled){
 			var ms = this.getMS()
 			var mul = this.ratio / this.pixelRatio
-			
+
 			var drumWidth = this.touchDrum.w * mul
 			var drumHeight = this.touchDrum.h * mul
 			if(drumHeight !== this.touchDrumHeight || drumWidth !== this.touchDrumWidth){
@@ -2040,14 +2556,14 @@
 			}else if(!this.controller.autoPlayEnabled){
 				var pageX = touch.pageX * this.pixelRatio
 				var pageY = touch.pageY * this.pixelRatio
-				
+
 				var c = this.touchCircle
 				var pi = Math.PI
 				var inPath = () => this.ctx.isPointInPath(pageX, pageY)
-				
+
 				this.ctx.beginPath()
 				this.ctx.ellipse(c.x, c.y, c.rx, c.ry, 0, pi, 0)
-				
+
 				if(inPath()){
 					if(pageX < this.winW / 2){
 						this.touchNote("don_l")
@@ -2160,7 +2676,7 @@
 	onmousemove(event){
 		this.lastMousemove = this.getMS()
 		this.cursorHidden = false
-		
+
 		if(!this.multiplayer && this.controller.game.paused){
 			var mouse = this.mouseOffset(event.offsetX, event.offsetY)
 			var moveTo = this.pauseMouse(mouse.x, mouse.y)
@@ -2237,7 +2753,7 @@
 		this.pauseCache.clean()
 		this.branchCache.clean()
 		this.nameplateCache.clean()
-		
+
 		versionDiv.classList.remove("version-hide")
 		loader.screen.parentNode.appendChild(versionDiv)
 		if(this.multiplayer !== 2){

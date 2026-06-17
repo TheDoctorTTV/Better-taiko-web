@@ -3,7 +3,10 @@
 import base64
 import bcrypt
 import hashlib
-import config
+try:
+    import config
+except ModuleNotFoundError:
+    raise FileNotFoundError('No such file or directory: \'config.py\'. Copy the example config file config.example.py to config.py')
 import json
 import re
 import requests
@@ -17,28 +20,54 @@ from flask_caching import Cache
 from flask_session import Session
 from flask_wtf.csrf import CSRFProtect, generate_csrf, CSRFError
 from ffmpy import FFmpeg
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument, UpdateOne
+from pymongo.errors import DuplicateKeyError
 from redis import Redis
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+REMOTE_HASH_TIMEOUT = (3.05, 20)
+
+def take_config(name, required=False):
+    if hasattr(config, name):
+        return getattr(config, name)
+    elif required:
+        raise ValueError('Required option is not defined in the config.py file: {}'.format(name))
+    else:
+        return None
 
 app = Flask(__name__)
-client = MongoClient(host=config.MONGO['host'])
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+client = MongoClient(host=take_config('MONGO', required=True)['host'])
 
-app.secret_key = config.SECRET_KEY
+app.secret_key = take_config('SECRET_KEY') or 'change-me'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = True
 app.config['SESSION_TYPE'] = 'redis'
+redis_config = take_config('REDIS', required=True)
 app.config['SESSION_REDIS'] = Redis(
-    host=config.REDIS['CACHE_REDIS_HOST'],
-    port=config.REDIS['CACHE_REDIS_PORT'],
-    password=config.REDIS['CACHE_REDIS_PASSWORD'],
-    db=config.REDIS['CACHE_REDIS_DB']
+    host=redis_config['CACHE_REDIS_HOST'],
+    port=redis_config['CACHE_REDIS_PORT'],
+    password=redis_config['CACHE_REDIS_PASSWORD'],
+    db=redis_config['CACHE_REDIS_DB']
 )
-app.cache = Cache(app, config=config.REDIS)
+app.cache = Cache(app, config=redis_config)
 sess = Session()
 sess.init_app(app)
 csrf = CSRFProtect(app)
 
-db = client[config.MONGO['database']]
+db = client[take_config('MONGO', required=True)['database']]
 db.users.create_index('username', unique=True)
+db.users.create_index('username_lower', unique=True, sparse=True)
+db.users.create_index('session_id')
 db.songs.create_index('id', unique=True)
+db.songs.create_index('enabled')
+db.scores.create_index('username')
+db.scores.create_index([('username', 1), ('hash', 1)])
+db.categories.create_index('id')
+db.makers.create_index('id')
+db.song_skins.create_index('id')
+db.seq.create_index('name', unique=True)
 
 
 class HashException(Exception):
@@ -49,22 +78,41 @@ def api_error(message):
     return jsonify({'status': 'error', 'message': message})
 
 
+def delete_cached_view(path):
+    app.cache.delete('view/%s' % path)
+
+
+def next_sequence_value(name):
+    seq = db.seq.find_one_and_update(
+        {'name': name},
+        {'$inc': {'value': 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER
+    )
+    return int(seq['value'])
+
+
 def generate_hash(id, form):
     md5 = hashlib.md5()
     if form['type'] == 'tja':
-        urls = ['%s%s/main.tja' % (config.SONGS_BASEURL, id)]
+        urls = ['%s%s/main.tja' % (take_config('SONGS_BASEURL', required=True), id)]
     else:
         urls = []
         for diff in ['easy', 'normal', 'hard', 'oni', 'ura']:
             if form['course_' + diff]:
-                urls.append('%s%s/%s.osu' % (config.SONGS_BASEURL, id, diff))
+                urls.append('%s%s/%s.osu' % (take_config('SONGS_BASEURL', required=True), id, diff))
 
     for url in urls:
         if url.startswith("http://") or url.startswith("https://"):
-            resp = requests.get(url)
-            if resp.status_code != 200:
-                raise HashException('Invalid response from %s (status code %s)' % (resp.url, resp.status_code))
-            md5.update(resp.content)
+            try:
+                with requests.get(url, timeout=REMOTE_HASH_TIMEOUT, stream=True) as resp:
+                    if resp.status_code != 200:
+                        raise HashException('Invalid response from %s (status code %s)' % (resp.url, resp.status_code))
+                    for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            md5.update(chunk)
+            except requests.RequestException as e:
+                raise HashException('Failed to fetch %s: %s' % (url, str(e)))
         else:
             if url.startswith("/"):
                 url = url[1:]
@@ -116,21 +164,24 @@ def before_request_func():
 
 def get_config(credentials=False):
     config_out = {
-        'songs_baseurl': config.SONGS_BASEURL,
-        'assets_baseurl': config.ASSETS_BASEURL,
-        'email': config.EMAIL,
-        'accounts': config.ACCOUNTS,
-        'custom_js': config.CUSTOM_JS
+        'songs_baseurl': take_config('SONGS_BASEURL', required=True),
+        'assets_baseurl': take_config('ASSETS_BASEURL', required=True),
+        'email': take_config('EMAIL'),
+        'accounts': take_config('ACCOUNTS'),
+        'custom_js': take_config('CUSTOM_JS'),
+        'plugins': take_config('PLUGINS') and [x for x in take_config('PLUGINS') if x['url']],
+        'preview_type': take_config('PREVIEW_TYPE') or 'mp3'
     }
     if credentials:
-        min_level = config.GOOGLE_CREDENTIALS['min_level'] or 0
+        google_credentials = take_config('GOOGLE_CREDENTIALS')
+        min_level = google_credentials['min_level'] or 0
         if not session.get('username'):
             user_level = 0
         else:
             user = db.users.find_one({'username': session.get('username')})
             user_level = user['user_level']
         if user_level >= min_level:
-            config_out['google_credentials'] = config.GOOGLE_CREDENTIALS
+            config_out['google_credentials'] = google_credentials
         else:
             config_out['google_credentials'] = {
                 'gdrive_enabled': False
@@ -144,9 +195,8 @@ def get_config(credentials=False):
     config_out['_version'] = get_version()
     return config_out
 
-
 def get_version():
-    version = {'commit': None, 'commit_short': '', 'version': None, 'url': config.URL}
+    version = {'commit': None, 'commit_short': '', 'version': None, 'url': take_config('URL')}
     if os.path.isfile('version.json'):
         try:
             ver = json.load(open('version.json', 'r'))
@@ -182,6 +232,74 @@ def is_hex(input):
         return True
     except ValueError:
         return False
+
+
+def optional_int_form(name, minimum=None, maximum=None, zero_as_none=False):
+    value = request.form.get(name)
+    if value in (None, ''):
+        return None
+    try:
+        value = int(value)
+    except ValueError:
+        abort(400)
+    if minimum is not None and value < minimum:
+        abort(400)
+    if maximum is not None and value > maximum:
+        abort(400)
+    if zero_as_none and value == 0:
+        return None
+    return value
+
+
+def required_float_form(name):
+    value = request.form.get(name)
+    if value in (None, ''):
+        abort(400)
+    try:
+        return float(value)
+    except ValueError:
+        abort(400)
+
+
+def build_song_output(include_enabled=True):
+    output = {'title_lang': {}, 'subtitle_lang': {}, 'courses': {}}
+    if include_enabled:
+        output['enabled'] = True if request.form.get('enabled') else False
+
+    output['title'] = request.form.get('title') or None
+    output['subtitle'] = request.form.get('subtitle') or None
+    for lang in ['ja', 'en', 'cn', 'tw', 'ko']:
+        output['title_lang'][lang] = request.form.get('title_%s' % lang) or None
+        output['subtitle_lang'][lang] = request.form.get('subtitle_%s' % lang) or None
+
+    for course in ['easy', 'normal', 'hard', 'oni', 'ura']:
+        stars = optional_int_form('course_%s' % course, minimum=0, maximum=10)
+        if stars is None:
+            output['courses'][course] = None
+        else:
+            output['courses'][course] = {
+                'stars': stars,
+                'branch': True if request.form.get('branch_%s' % course) else False
+            }
+
+    chart_type = request.form.get('type')
+    if chart_type not in ('tja', 'osu'):
+        abort(400)
+    music_type = request.form.get('music_type')
+    if music_type not in ('mp3', 'ogg'):
+        abort(400)
+
+    output['category_id'] = optional_int_form('category_id', minimum=0, zero_as_none=True)
+    output['type'] = chart_type
+    output['music_type'] = music_type
+    output['offset'] = required_float_form('offset')
+    output['skin_id'] = optional_int_form('skin_id', minimum=0, zero_as_none=True)
+    output['preview'] = required_float_form('preview')
+    output['volume'] = required_float_form('volume')
+    output['maker_id'] = optional_int_form('maker_id', minimum=0, zero_as_none=True)
+    output['lyrics'] = True if request.form.get('lyrics') else False
+    output['hash'] = request.form.get('hash') or None
+    return output
 
 
 @app.route('/')
@@ -233,7 +351,11 @@ def route_admin_songs_new():
     song_skins = list(db.song_skins.find({}))
     makers = list(db.makers.find({}))
     seq = db.seq.find_one({'name': 'songs'})
-    seq_new = seq['value'] + 1 if seq else 1
+    if seq:
+        seq_new = int(seq['value']) + 1
+    else:
+        max_song = next(db.songs.find({}, {'id': True}).sort('id', -1).limit(1), {'id': 0})['id']
+        seq_new = int(max_song or 0) + 1
 
     return render_template('admin_song_new.html', categories=categories, song_skins=song_skins, makers=makers, config=get_config(), id=seq_new)
 
@@ -241,34 +363,9 @@ def route_admin_songs_new():
 @app.route('/admin/songs/new', methods=['POST'])
 @admin_required(level=100)
 def route_admin_songs_new_post():
-    output = {'title_lang': {}, 'subtitle_lang': {}, 'courses': {}}
-    output['enabled'] = True if request.form.get('enabled') else False
-    output['title'] = request.form.get('title') or None
-    output['subtitle'] = request.form.get('subtitle') or None
-    for lang in ['ja', 'en', 'cn', 'tw', 'ko']:
-        output['title_lang'][lang] = request.form.get('title_%s' % lang) or None
-        output['subtitle_lang'][lang] = request.form.get('subtitle_%s' % lang) or None
-
-    for course in ['easy', 'normal', 'hard', 'oni', 'ura']:
-        if request.form.get('course_%s' % course):
-            output['courses'][course] = {'stars': int(request.form.get('course_%s' % course)),
-                                         'branch': True if request.form.get('branch_%s' % course) else False}
-        else:
-            output['courses'][course] = None
+    output = build_song_output()
     
-    output['category_id'] = int(request.form.get('category_id')) or None
-    output['type'] = request.form.get('type')
-    output['music_type'] = request.form.get('music_type')
-    output['offset'] = float(request.form.get('offset')) or None
-    output['skin_id'] = int(request.form.get('skin_id')) or None
-    output['preview'] = float(request.form.get('preview')) or None
-    output['volume'] = float(request.form.get('volume')) or None
-    output['maker_id'] = int(request.form.get('maker_id')) or None
-    output['lyrics'] = True if request.form.get('lyrics') else False
-    output['hash'] = request.form.get('hash')
-    
-    seq = db.seq.find_one({'name': 'songs'})
-    seq_new = seq['value'] + 1 if seq else 1
+    seq_new = next_sequence_value('songs')
     
     hash_error = False
     if request.form.get('gen_hash'):
@@ -282,10 +379,9 @@ def route_admin_songs_new_post():
     output['order'] = seq_new
     
     db.songs.insert_one(output)
+    delete_cached_view('/api/songs')
     if not hash_error:
         flash('Song created.')
-    
-    db.seq.update_one({'name': 'songs'}, {'$set': {'value': seq_new}}, upsert=True)
     
     return redirect('/admin/songs/%s' % str(seq_new))
 
@@ -300,33 +396,7 @@ def route_admin_songs_id_post(id):
     user = db.users.find_one({'username': session['username']})
     user_level = user['user_level']
 
-    output = {'title_lang': {}, 'subtitle_lang': {}, 'courses': {}}
-    if user_level >= 100:
-        output['enabled'] = True if request.form.get('enabled') else False
-
-    output['title'] = request.form.get('title') or None
-    output['subtitle'] = request.form.get('subtitle') or None
-    for lang in ['ja', 'en', 'cn', 'tw', 'ko']:
-        output['title_lang'][lang] = request.form.get('title_%s' % lang) or None
-        output['subtitle_lang'][lang] = request.form.get('subtitle_%s' % lang) or None
-
-    for course in ['easy', 'normal', 'hard', 'oni', 'ura']:
-        if request.form.get('course_%s' % course):
-            output['courses'][course] = {'stars': int(request.form.get('course_%s' % course)),
-                                         'branch': True if request.form.get('branch_%s' % course) else False}
-        else:
-            output['courses'][course] = None
-    
-    output['category_id'] = int(request.form.get('category_id')) or None
-    output['type'] = request.form.get('type')
-    output['music_type'] = request.form.get('music_type')
-    output['offset'] = float(request.form.get('offset')) or None
-    output['skin_id'] = int(request.form.get('skin_id')) or None
-    output['preview'] = float(request.form.get('preview')) or None
-    output['volume'] = float(request.form.get('volume')) or None
-    output['maker_id'] = int(request.form.get('maker_id')) or None
-    output['lyrics'] = True if request.form.get('lyrics') else False
-    output['hash'] = request.form.get('hash')
+    output = build_song_output(include_enabled=user_level >= 100)
     
     hash_error = False
     if request.form.get('gen_hash'):
@@ -337,6 +407,7 @@ def route_admin_songs_id_post(id):
             flash('An error occurred: %s' % str(e), 'error')
     
     db.songs.update_one({'id': id}, {'$set': output})
+    delete_cached_view('/api/songs')
     if not hash_error:
         flash('Changes saved.')
     
@@ -351,6 +422,7 @@ def route_admin_songs_id_delete(id):
         return abort(404)
 
     db.songs.delete_one({'id': id})
+    delete_cached_view('/api/songs')
     flash('Song deleted.')
     return redirect('/admin/songs')
 
@@ -370,13 +442,16 @@ def route_admin_users_post():
     admin = db.users.find_one({'username': admin_name})
     max_level = admin['user_level'] - 1
     
-    username = request.form.get('username')
-    level = int(request.form.get('level')) or 0
+    username = (request.form.get('username') or '').strip()
+    try:
+        level = int(request.form.get('level')) or 0
+    except ValueError:
+        level = 0
     
-    user = db.users.find_one({'username': username})
+    user = db.users.find_one({'username_lower': username.lower()})
     if not user:
         flash('Error: User was not found.')
-    elif admin_name == username:
+    elif admin['username'] == user['username']:
         flash('Error: You cannot modify your own level.')
     else:
         user_level = user['user_level']
@@ -386,7 +461,7 @@ def route_admin_users_post():
             flash('Error: This user has higher level than you.')
         else:
             output = {'user_level': level}
-            db.users.update_one({'username': username}, {'$set': output})
+            db.users.update_one({'username': user['username']}, {'$set': output})
             flash('User updated.')
     
     return render_template('admin_users.html', config=get_config(), max_level=max_level, username=username, level=level)
@@ -416,39 +491,57 @@ def route_api_preview():
 @app.route('/api/songs')
 @app.cache.cached(timeout=15)
 def route_api_songs():
-    songs = list(db.songs.find({'enabled': True}, {'_id': False, 'enabled': False}))
+    songs = list(db.songs.find({'enabled': True}, {'_id': False, 'enabled': False}).sort('id', 1))
+    maker_ids = sorted({song.get('maker_id') for song in songs if song.get('maker_id') not in (None, 0)})
+    category_ids = sorted({song.get('category_id') for song in songs if song.get('category_id')})
+    skin_ids = sorted({song.get('skin_id') for song in songs if song.get('skin_id')})
+
+    makers = {
+        maker['id']: maker
+        for maker in db.makers.find({'id': {'$in': maker_ids}}, {'_id': False})
+    } if maker_ids else {}
+    categories = {
+        category['id']: category
+        for category in db.categories.find({'id': {'$in': category_ids}}, {'_id': False})
+    } if category_ids else {}
+    song_skins = {
+        skin['id']: {key: value for key, value in skin.items() if key not in ('_id', 'id')}
+        for skin in db.song_skins.find({'id': {'$in': skin_ids}})
+    } if skin_ids else {}
+
     for song in songs:
-        if song['maker_id']:
-            if song['maker_id'] == 0:
+        maker_id = song.pop('maker_id', None)
+        if maker_id:
+            if maker_id == 0:
                 song['maker'] = 0
             else:
-                song['maker'] = db.makers.find_one({'id': song['maker_id']}, {'_id': False})
+                song['maker'] = makers.get(maker_id)
         else:
             song['maker'] = None
-        del song['maker_id']
 
-        if song['category_id']:
-            song['category'] = db.categories.find_one({'id': song['category_id']})['title']
+        category_id = song.get('category_id')
+        category = categories.get(category_id)
+        if category:
+            song['category'] = category['title']
         else:
             song['category'] = None
         #del song['category_id']
 
-        if song['skin_id']:
-            song['song_skin'] = db.song_skins.find_one({'id': song['skin_id']}, {'_id': False, 'id': False})
+        skin_id = song.pop('skin_id', None)
+        if skin_id:
+            song['song_skin'] = song_skins.get(skin_id)
         else:
             song['song_skin'] = None
-        del song['skin_id']
 
     return jsonify(songs)
 
 @app.route('/api/categories')
 @app.cache.cached(timeout=15)
 def route_api_categories():
-    categories = list(db.categories.find({},{'_id': False}))
+    categories = list(db.categories.find({}, {'_id': False}).sort('id', 1))
     return jsonify(categories)
 
 @app.route('/api/config')
-@app.cache.cached(timeout=15)
 def route_api_config():
     config = get_config(credentials=True)
     return jsonify(config)
@@ -459,9 +552,6 @@ def route_api_register():
     data = request.get_json()
     if not schema.validate(data, schema.register):
         return abort(400)
-
-    if session.get('username'):
-        session.clear()
 
     username = data.get('username', '')
     if len(username) < 3 or len(username) > 20 or not re.match('^[a-zA-Z0-9_]{3,20}$', username):
@@ -474,20 +564,26 @@ def route_api_register():
     if not 6 <= len(password) <= 5000:
         return api_error('invalid_password')
 
+    if session.get('username'):
+        session.clear()
+
     salt = bcrypt.gensalt()
     hashed = bcrypt.hashpw(password, salt)
     don = get_default_don()
     
     session_id = os.urandom(24).hex()
-    db.users.insert_one({
-        'username': username,
-        'username_lower': username.lower(),
-        'password': hashed,
-        'display_name': username,
-        'don': don,
-        'user_level': 1,
-        'session_id': session_id
-    })
+    try:
+        db.users.insert_one({
+            'username': username,
+            'username_lower': username.lower(),
+            'password': hashed,
+            'display_name': username,
+            'don': don,
+            'user_level': 1,
+            'session_id': session_id
+        })
+    except DuplicateKeyError:
+        return api_error('username_in_use')
 
     session['session_id'] = session_id
     session['username'] = username
@@ -633,13 +729,20 @@ def route_api_scores_save():
         db.scores.delete_many({'username': username})
 
     scores = data.get('scores', [])
-    for score in scores:
-        db.scores.update_one({'username': username, 'hash': score['hash']},
-        {'$set': {
-            'username': username,
-            'hash': score['hash'],
-            'score': score['score']
-        }}, upsert=True)
+    score_updates = [
+        UpdateOne(
+            {'username': username, 'hash': score['hash']},
+            {'$set': {
+                'username': username,
+                'hash': score['hash'],
+                'score': score['score']
+            }},
+            upsert=True
+        )
+        for score in scores
+    ]
+    if score_updates:
+        db.scores.bulk_write(score_updates, ordered=False)
 
     return jsonify({'status': 'ok'})
 
@@ -650,7 +753,7 @@ def route_api_scores_get():
     username = session.get('username')
 
     scores = []
-    for score in db.scores.find({'username': username}):
+    for score in db.scores.find({'username': username}, {'_id': False, 'hash': True, 'score': True}):
         scores.append({
             'hash': score['hash'],
             'score': score['score']
@@ -664,7 +767,7 @@ def route_api_scores_get():
 @app.route('/privacy')
 def route_api_privacy():
     last_modified = time.strftime('%d %B %Y', time.gmtime(os.path.getmtime('templates/privacy.txt')))
-    integration = config.GOOGLE_CREDENTIALS['gdrive_enabled']
+    integration = take_config('GOOGLE_CREDENTIALS')['gdrive_enabled'] if take_config('GOOGLE_CREDENTIALS') else False
     
     response = make_response(render_template('privacy.txt', last_modified=last_modified, config=get_config(), integration=integration))
     response.headers['Content-type'] = 'text/plain; charset=utf-8'
@@ -677,7 +780,6 @@ def make_preview(song_id, song_type, song_ext, preview):
 
     if os.path.isfile(song_path) and not os.path.isfile(prev_path):
         if not preview or preview <= 0:
-            print('Skipping #%s due to no preview' % song_id)
             return False
 
         print('Making preview.mp3 for song #%s' % song_id)
@@ -689,4 +791,13 @@ def make_preview(song_id, song_type, song_ext, preview):
 
 
 if __name__ == '__main__':
+    from flask import send_from_directory
+    @app.route('/src/<path:path>')
+    def send_src(path):
+        return send_from_directory('public/src', path)
+
+    @app.route('/assets/<path:path>')
+    def send_assets(path):
+        return send_from_directory('public/assets', path)
+
     app.run(port=34801)

@@ -1,5 +1,8 @@
 class Scoresheet{
-	constructor(controller, results, multiplayer, touchEnabled){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(controller, results, multiplayer, touchEnabled){
 		this.controller = controller
 		this.resultsObj = results
 		this.player = [multiplayer ? (p2.player === 1 ? 0 : 1) : 0]
@@ -95,6 +98,21 @@ class Scoresheet{
 			keyboardEvents: controller.keyboard.keyboardEvents,
 			gamepadEvents: controller.keyboard.gamepad.gamepadEvents,
 			touchEvents: controller.view.touchEvents
+		})
+	}
+	getBadgeNames(){
+		var badges = this.controller.getModBadges ? this.controller.getModBadges() : []
+		badges = badges.slice()
+		if(this.controller.autoPlayEnabled){
+			badges.unshift("badge_auto")
+		}
+		return badges.filter(name => assets.image[name])
+	}
+	drawModBadges(ctx, x, y, size){
+		var badges = this.getBadgeNames()
+		var gap = Math.max(2, Math.round(size * 0.12))
+		badges.forEach((name, i) => {
+			ctx.drawImage(assets.image[name], x + i * (size + gap), y, size, size)
 		})
 	}
 	keyDown(pressed){
@@ -212,8 +230,8 @@ class Scoresheet{
 		
 		if(this.redrawing){
 			if(this.winW !== winW || this.winH !== winH){
-				this.canvas.width = winW
-				this.canvas.height = winH
+				this.canvas.width = Math.max(1, winW)
+				this.canvas.height = Math.max(1, winH)
 				ctx.scale(ratio, ratio)
 				this.canvas.style.width = (winW / this.pixelRatio) + "px"
 				this.canvas.style.height = (winH / this.pixelRatio) + "px"
@@ -502,15 +520,7 @@ class Scoresheet{
 						})
 					})
 					
-					let badge_name = this.controller.getModBadge();
-					if(this.controller.autoPlayEnabled) {
-						badge_name = "badge_auto";
-					}
-					if(badge_name){
-						ctx.drawImage(assets.image[badge_name],
-							431, 311, 34, 34
-						)
-					}
+					this.drawModBadges(ctx, 431, 311, 34)
 					
 					this.draw.roundedRect({
 						ctx: ctx,

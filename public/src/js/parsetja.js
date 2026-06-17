@@ -1,5 +1,8 @@
 ﻿class ParseTja{
-	constructor(file, difficulty, stars, offset, metaOnly, mods){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(file, difficulty, stars, offset, metaOnly, mods){
 		this.data = []
 		for(let line of file){
 			var indexComment = line.indexOf("//")
@@ -14,9 +17,12 @@
 		}
 		this.difficulty = difficulty
 		this.stars = stars
-		this.offset = (offset || 0) * -1000
+		var externalOffset = parseFloat(offset)
+		this.externalOffset = isNaN(externalOffset) ? 0 : externalOffset
+		this.offset = 0
 		this.mods = mods || {
 			speed: 1,
+			inverse: false,
 			shuffle: 0,
 			doron: false,
 			hardcore: false,
@@ -58,6 +64,26 @@
 			this.circles = this.parseCircles()
 		}
 	}
+	invertNote(note){
+		switch(note.type){
+			case "don":
+				note.type = "ka"
+				note.txt = strings.note.ka
+				break
+			case "ka":
+				note.type = "don"
+				note.txt = strings.note.don
+				break
+			case "daiDon":
+				note.type = "daiKa"
+				note.txt = strings.note.daiKa
+				break
+			case "daiKa":
+				note.type = "daiDon"
+				note.txt = strings.note.daiDon
+				break
+		}
+	}
 	parseMetadata(){
 		var metaNumbers = ["bpm", "offset", "demostart", "level", "scoremode", "scorediff"]
 		var inSong = false
@@ -71,7 +97,7 @@
 			if(line.slice(0, 1) === "#"){
 				
 				var name = line.slice(1).toLowerCase()
-				if(name === "start" && !inSong){
+				if((name === "start" || name === "start p1") && !inSong){
 					
 					inSong = true
 					if(!hasSong){
@@ -142,7 +168,9 @@
 	}
 	parseCircles(){
 		var meta = this.metadata[this.difficulty] || {}
-		var ms = (meta.offset || 0) * -1000 + this.offset
+		var chartOffset = typeof meta.offset === "number" && !isNaN(meta.offset) ? meta.offset : 0
+		this.offset = (chartOffset + this.externalOffset) * -1000
+		var ms = this.offset
 		var bpm = Math.abs(meta.bpm) || 120
 		var scroll = 1
 		var measure = 4
@@ -238,27 +266,11 @@
 					var note = currentMeasure[i]
 					if (note.type) {
 						circleID++;
-						if (Math.random() < this.mods.shuffle) { 
-							switch (note.type) { 
-								case "don":
-									note.type = "ka";
-									note.txt = strings.note.ka;
-									break;
-								case "ka":
-									note.type = "don";
-									note.txt = strings.note.don;
-									break;
-								case "daiDon":
-									note.type = "daiKa";
-									note.txt = strings.note.daiKa;
-									break;
-								case "daiKa":
-									note.type = "daiDon";
-									note.txt = strings.note.daiDon;
-									break;
-								default:
-									break;
-							}
+						if(this.mods.inverse){
+							this.invertNote(note)
+						}
+						if(Math.random() < this.mods.shuffle){
+							this.invertNote(note)
 						}
 						if (this.mods.allDon) {
 							switch (note.type) { 

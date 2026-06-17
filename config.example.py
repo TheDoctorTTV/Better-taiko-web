@@ -13,6 +13,16 @@ ACCOUNTS = True
 # Custom JavaScript file to load with the simulator.
 CUSTOM_JS = ''
 
+# Default plugins to load with the simulator.
+PLUGINS = [{
+    'url': '',
+    'start': False,
+    'hide': False
+}]
+
+# Filetype to use for song previews. (mp3/ogg)
+PREVIEW_TYPE = 'mp3'
+
 # MongoDB server settings.
 MONGO = {
     'host': ['127.0.0.1:27017'],

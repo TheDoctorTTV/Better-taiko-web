@@ -1,10 +1,16 @@
 class Controller{
-	constructor(selectedSong, songData, autoPlayEnabled, multiplayer, touchEnabled){
+	constructor(...args){
+		this.init(...args)
+	}
+	init(selectedSong, songData, autoPlayEnabled, multiplayer, touchEnabled){
 		this.selectedSong = selectedSong
 		this.songData = songData
 		this.autoPlayEnabled = autoPlayEnabled
 		this.mods = selectedSong.mods;
 		this.saveScore = !autoPlayEnabled
+		if(this.mods && (this.mods.allDon || this.mods.allKat)){
+			this.saveScore = false
+		}
 		this.multiplayer = multiplayer
 		this.touchEnabled = touchEnabled
 		if(multiplayer === 2){
@@ -233,6 +239,9 @@ class Controller{
 	}
 	songSelection(fadeIn, showWarning){
 		if(!fadeIn){
+			if(this.cleaned){
+				return
+			}
 			this.clean()
 		}
 		if(this.calibrationMode){
@@ -242,6 +251,9 @@ class Controller{
 		}
 	}
 	restartSong(){
+		if(this.cleaned){
+			return
+		}
 		this.clean()
 		if(this.multiplayer){
 			new LoadSong(this.selectedSong, false, true, this.touchEnabled)
@@ -364,6 +376,7 @@ class Controller{
 		return true
 	}
 	clean(){
+		this.cleaned = true
 		if(this.multiplayer === 1){
 			this.syncWith.clean()
 		}
@@ -382,26 +395,36 @@ class Controller{
 			this.lyrics.clean()
 		}
 	}
-	getModBadge() {
-		if (!this.mods) { 
-			return null;
+	getModBadges() {
+		var badges = []
+		if(!this.mods){
+			return badges
 		}
 		if (this.mods.speed > 1) {
-			return "badge_x" + this.mods.speed.toString();
-		} else if (this.mods.shuffle > 0) { 
-			return "badge_s" + this.mods.shuffle.toString();
-		} else if (this.mods.doron) { 
-			return "badge_doron";
-		} else if (this.mods.hardcore) { 
-			return "badge_kanbeki";
-		} else if (this.mods.allDon) { 
-			this.saveScore= false
-			return "badge_don";
+			badges.push("badge_x" + this.mods.speed.toString())
+		}
+		if (this.mods.inverse) {
+			badges.push("badge_s1")
+		}
+		if (this.mods.shuffle > 0) { 
+			badges.push("badge_s" + this.mods.shuffle.toString())
+		}
+		if (this.mods.doron) { 
+			badges.push("badge_doron")
+		}
+		if (this.mods.hardcore) { 
+			badges.push("badge_kanbeki")
+		}
+		if (this.mods.allDon) { 
+			badges.push("badge_don")
 		} else if (this.mods.allKat) {			
-			this.saveScore = false
-			return "badge_kat";
+			badges.push("badge_kat")
 		}
 		
-		return null;
+		return badges
+	}
+	getModBadge() {
+		var badges = this.getModBadges()
+		return badges.length ? badges[0] : null
 	}
 }
