@@ -3,15 +3,18 @@ To set up and configure taiko-web, you'll need a few things:
 
 * A Linux server with the following software installed:
     * Git
-    * Python 3.5 (or later)
+    * Python 3.10 (or later)
     * nginx
     * MongoDB
+    * Redis
     * **Optional**: FFmpeg
-        * Must be compiled with libmp3lame codec
-    * **Optional**: Redis
+        * Must be compiled with the libmp3lame codec for MP3 preview generation
     * **Optional**: Supervisor
     * **Optional**: python3-virtualenv
 * Songs. taiko-web supports TJA and OSU charts.
+
+This repository does not include game assets, songs, audio, images, fonts, or
+chart media. You must search for, provide, and host your own assets and songs.
 
 While it may be possible to set up taiko-web under different environments (eg. using Windows Server, or a web server other than nginx), they are untested and unsupported.
 
@@ -38,22 +41,23 @@ Next, clone the taiko-web repository into a directory of your choosing.
 ```bash
 su -c 'mkdir -p /srv/taiko-web'
 su -c 'chown $USER /srv/taiko-web'
-git clone https://github.com/bui/taiko-web.git /srv/taiko-web
+git clone https://github.com/269Seahorse/Better-taiko-web.git /srv/taiko-web
 ```
 All the commands you run from now on must be ran inside the taiko-web directory, so change your working directory.
 
 ```bash
 cd /srv/taiko-web
 ```
-Run the following commands to install requirements and set default configurations.
+Run the following commands to set the default configuration files.
 
 ```bash
-pip3 install -r requirements.txt
 tools/get_version.sh
 cp tools/hooks/* .git/hooks/
 cp config.example.py config.py
 ```
-Edit config.py in a text editor to configure taiko-web for your system.
+Edit config.py in a text editor to configure taiko-web for your system. In
+particular, review `MONGO`, `REDIS`, `ASSETS_BASEURL`, `SONGS_BASEURL`, and
+`SECRET_KEY`.
 ### nginx setup
 Let's set up nginx now. Copy the example virtual host file `tools/nginx.conf` to `/etc/nginx/conf.d/taiko-web.conf`, changing the `server_name` and `root` statements as required.
 
@@ -146,6 +150,11 @@ So we have the song genres, but still no songs. In taiko-web, each song has a fo
 mkdir -p public/songs/1
 ```
 Then, copy the music and a chart file with filenames `main.ogg` and `main.tja` respectively into the newly-created directory.
+
+The repository also does not include the asset files used by the browser client.
+Place your own compatible game assets under `public/assets/`, or set
+`ASSETS_BASEURL` to a URL where those assets are hosted. Place songs under
+`public/songs/`, or set `SONGS_BASEURL` to a URL where your songs are hosted.
 
 As long as you are logged in on taiko-web, you should be able to navigate to `localhost/admin/songs` in your browser and add song metadata from there. After you add a song it should appear in the game.
 

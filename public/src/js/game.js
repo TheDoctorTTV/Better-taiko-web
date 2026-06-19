@@ -25,9 +25,6 @@ class Game{
 			title: selectedSong.title,
 			difficulty: this.rules.difficulty
 		}
-		this.globalScore.adlibTotal = this.songData.circles.filter(circle => {
-			return circle.type === "adlib" && (!circle.branch || circle.branch.active)
-		}).length
 		var combo = this.songData.circles.filter(circle => {
 			var type = circle.type
 			return (type === "don" || type === "ka" || type === "daiDon" || type === "daiKa" || type === "green") && (!circle.branch || circle.branch.active)
@@ -250,6 +247,8 @@ class Game{
 			this.controller.displayScore(0, true)
 			this.updateCombo(0)
 			this.updateGlobalScore(0, 1)
+		}else{
+			this.countAdlib(circle)
 		}
 		if(circle.type === "green"){
 			var keys = this.controller.getKeys()
@@ -392,6 +391,9 @@ class Game{
 					score = circleStatus
 				}
 				circle.played(score, score === 0 ? typeDai : (keyDai || typeGreen))
+				if(typeAdlib){
+					this.countAdlib(circle)
+				}
 				if(!typeAdlib || score){
 					this.controller.displayScore(score, false, typeDai && keyDai || typeGreen, typeAdlib)
 				}
@@ -444,10 +446,16 @@ class Game{
 					this.checkDrumroll(circle, keysKa || keyGreen)
 				}
 			}
+			}
+			return true
 		}
-		return true
-	}
-	checkBalloon(circle){
+		countAdlib(circle){
+			if(circle.type === "adlib" && !circle.adlibTotalCounted){
+				circle.adlibTotalCounted = true
+				this.globalScore.adlibTotal++
+			}
+		}
+		checkBalloon(circle){
 		var ms = this.elapsedTime
 		var popped = false
 		if(circle.timesHit >= circle.requiredHits - 1){

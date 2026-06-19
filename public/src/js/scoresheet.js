@@ -923,6 +923,14 @@ class Scoresheet{
 	
 	getResultValue(results, name){
 		var value = results && results[name]
+		if(name === "adlib"){
+			var hit = Number(value) || 0
+			var total = Number(results && results.adlibTotal) || 0
+			if(total > 0){
+				var percentage = Math.floor(hit / total * 100)
+				return hit.toString() + " " + percentage.toString() + "%"
+			}
+		}
 		return (value === undefined || value === null ? 0 : value).toString()
 	}
 
