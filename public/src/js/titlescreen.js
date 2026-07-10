@@ -13,7 +13,7 @@ class Titlescreen{
 			this.proceed = document.getElementById("title-proceed")
 			this.disclaimerText = document.getElementById("title-disclaimer-text")
 			this.disclaimerCopyright = document.getElementById("title-disclaimer-copyright")
-			this.logo = new Logo()
+			// this.logo = new Logo()
 		}
 		this.setLang(allStrings[settings.getItem("language")])
 		
@@ -121,12 +121,16 @@ class Titlescreen{
 		this.disclaimerCopyright.innerText = strings.titleCopyright
 		this.disclaimerCopyright.setAttribute("alt", strings.titleCopyright)
 		
-		this.logo.updateSubtitle()
+		if(this.logo){
+			this.logo.updateSubtitle()
+		}
 	}
 	clean(){
 		this.keyboard.clean()
 		this.gamepad.clean()
-		this.logo.clean()
+		if(this.logo){
+			this.logo.clean()
+		}
 		assets.sounds["v_title"].stop()
 		pageEvents.remove(this.titleScreen, ["mousedown", "touchstart"])
 		delete this.titleScreen

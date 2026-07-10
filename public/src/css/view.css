@@ -9,7 +9,7 @@
 	background-position: center;
 }
 .view{
-	background: rgb(246, 234, 212);
+	background: rgb(185, 114, 252);
 	color: black;
 	border: 0.25em black solid;
 	border-radius: 0.5em;
@@ -88,7 +88,7 @@ kbd{
 .view-end-button.selected{
 	position: relative;
 	color: #fff;
-	background: #ffb547;
+	background: #5a5a5a;
 	border-color: #fff;
 }
 .taibtn::before,

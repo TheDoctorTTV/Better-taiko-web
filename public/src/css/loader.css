@@ -3,7 +3,7 @@ body{
 	margin: 0;
 	width: 100%;
 	height: 100%;
-	background: #fe7839;
+	background: #5a5a5a;
 	position: absolute;
 	user-select: none;
 	touch-action: none;
@@ -19,7 +19,7 @@ body{
 	background-size: 30vh;
 }
 #screen.pattern-bg{
-	background-color: #fe7839;
+	background-color: #5a5a5a;
 }
 #assets,
 #browse{
@@ -38,7 +38,7 @@ body{
 #loader .progress{
 	width:0%;
 	height: 100%;
-	background: #b52a2a;
+	background: #b02ab5;
 	opacity: 0.90;
 }
 
