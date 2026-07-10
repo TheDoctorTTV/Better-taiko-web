@@ -35,7 +35,7 @@
 	animation: toggleFade 2s infinite ease-in-out;
 }
 .click-to-continue::before{
-	-webkit-text-stroke: 0.25em #f00;
+	-webkit-text-stroke: 0.25em rgb(163, 0, 196);
 	filter: blur(0.3vmin);
 }
 #title-disclaimer {

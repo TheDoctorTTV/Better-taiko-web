@@ -9,7 +9,8 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div class="form-field">
-            <span class="checkbox"><input type="checkbox" name="enabled" id="enabled" checked><label for="enabled"> Enabled</label></span>
+            <span class="checkbox"><input type="checkbox" name="enabled" id="enabled" checked><label for="enabled">
+                    Enabled</label></span>
         </div>
 
         <div class="form-field">
@@ -48,19 +49,24 @@
             <p>Courses</p>
             <label for="course_easy">Easy</label>
             <input type="number" id="course_easy" value="" name="course_easy" min="0" max="10">
-            <span class="checkbox"><input type="checkbox" name="branch_easy" id="branch_easy" tabindex="-1"><label for="branch_easy"> Diverge Notes</label></span>
+            <span class="checkbox"><input type="checkbox" name="branch_easy" id="branch_easy" tabindex="-1"><label
+                    for="branch_easy"> Diverge Notes</label></span>
             <label for="course_normal">Normal</label>
             <input type="number" id="course_normal" value="" name="course_normal" min="0" max="10">
-            <span class="checkbox"><input type="checkbox" name="branch_normal" id="branch_normal" tabindex="-1"><label for="branch_normal"> Diverge Notes</label></span>
+            <span class="checkbox"><input type="checkbox" name="branch_normal" id="branch_normal" tabindex="-1"><label
+                    for="branch_normal"> Diverge Notes</label></span>
             <label for="course_hard">Hard</label>
             <input type="number" id="course_hard" value="" name="course_hard" min="0" max="10">
-            <span class="checkbox"><input type="checkbox" name="branch_hard" id="branch_hard" tabindex="-1"><label for="branch_hard"> Diverge Notes</label></span>
+            <span class="checkbox"><input type="checkbox" name="branch_hard" id="branch_hard" tabindex="-1"><label
+                    for="branch_hard"> Diverge Notes</label></span>
             <label for="course_oni">Oni</label>
             <input type="number" id="course_oni" value="" name="course_oni" min="0" max="10">
-            <span class="checkbox"><input type="checkbox" name="branch_oni" id="branch_oni" tabindex="-1"><label for="branch_oni"> Diverge Notes</label></span>
+            <span class="checkbox"><input type="checkbox" name="branch_oni" id="branch_oni" tabindex="-1"><label
+                    for="branch_oni"> Diverge Notes</label></span>
             <label for="course_ura">Ura</label>
             <input type="number" id="course_ura" value="" name="course_ura" min="0" max="10">
-            <span class="checkbox"><input type="checkbox" name="branch_ura" id="branch_ura" tabindex="-1"><label for="branch_ura"> Diverge Notes</label></span>
+            <span class="checkbox"><input type="checkbox" name="branch_ura" id="branch_ura" tabindex="-1"><label
+                    for="branch_ura"> Diverge Notes</label></span>
         </div>
 
         <div class="form-field">
@@ -68,7 +74,7 @@
             <select name="category_id" id="category_id">
                 <option value="0">(none)</option>
                 {% for category in categories %}
-                    <option value="{{ category.id }}">{{ category.title }}</option>
+                <option value="{{ category.id }}">{{ category.title }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -99,7 +105,7 @@
             <select name="skin_id" id="skin_id">
                 <option value="0">(none)</option>
                 {% for skin in song_skins %}
-                    <option value="{{ skin.id }}">{{ skin.name }}</option>
+                <option value="{{ skin.id }}">{{ skin.name }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -119,19 +125,21 @@
             <select name="maker_id" id="maker_id">
                 <option value="0">(none)</option>
                 {% for maker in makers %}
-                    <option value="{{ maker.id }}">{{ maker.name }}</option>
+                <option value="{{ maker.id }}">{{ maker.name }}</option>
                 {% endfor %}
             </select>
         </div>
 
         <div class="form-field">
             <p><label for="lyrics">Lyrics</label></p>
-            <span class="checkbox"><input type="checkbox" name="lyrics" id="lyrics"><label for="lyrics"> Enabled</label></span>
+            <span class="checkbox"><input type="checkbox" name="lyrics" id="lyrics"><label for="lyrics">
+                    Enabled</label></span>
         </div>
 
         <div class="form-field">
             <p><label for="hash">Hash</label></p>
-            <input type="text" id="hash" value="" name="hash"> <span class="checkbox"><input type="checkbox" name="gen_hash" id="gen_hash"><label for="gen_hash"> Generate</label></span>
+            <input type="text" id="hash" value="" name="hash"> <span class="checkbox"><input type="checkbox"
+                    name="gen_hash" id="gen_hash"><label for="gen_hash"> Generate</label></span>
         </div>
 
         <button type="submit" class="save-song">Save</button>
